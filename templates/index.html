@@ -53,8 +53,9 @@
     .card-struct { display: flex; flex-direction: column; align-items: center; }
     .card-struct .svg-wrap { background: #fff; border-radius: 8px; padding: 8px; max-width: 100%; }
     .card-struct .svg-wrap svg { display: block; max-width: 100%; height: auto; }
-    .highlight-note { margin-top: 10px; font-size: .78rem; color: var(--warn); display: flex; align-items: center; gap: 6px; }
-    .highlight-note .dot { width: 10px; height: 10px; border-radius: 50%; background: #ff8000; flex-shrink: 0; }
+    .highlight-note { margin-top: 10px; }
+    .highlight-note .hl-badge { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; background: rgba(255,128,0,.12); border: 1px solid rgba(255,128,0,.4); border-radius: 20px; font-size: .78rem; color: #ff8000; white-space: nowrap; }
+    .highlight-note .hl-badge::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ff8000; flex-shrink: 0; }
     .smiles-disp { margin-top: 8px; font-family: monospace; font-size: .78rem; color: var(--muted); word-break: break-all; text-align: center; }
 
     /* ── Key metrics ── */
@@ -158,8 +159,7 @@
         <div class="card-title">Molecular Structure</div>
         <div class="svg-wrap" id="svg-wrap"></div>
         <div class="highlight-note" id="hl-note" style="display:none">
-          <div class="dot"></div>
-          <span id="hl-text"></span>
+          <span class="hl-badge" id="hl-text"></span>
         </div>
         <div class="smiles-disp" id="canon-smi"></div>
       </div>
