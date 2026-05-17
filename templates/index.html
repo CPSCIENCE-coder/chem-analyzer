@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChemPredict — logP & pKa Analyzer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0f1117;
+      --surface: #1a1d27;
+      --card:    #21253a;
+      --border:  #2e3350;
+      --accent:  #5b8dee;
+      --green:   #3ecf8e;
+      --warn:    #f0b429;
+      --text:    #e8eaf2;
+      --muted:   #7b82a6;
+      --error:   #ef5350;
+      --radius:  12px;
+    }
+    body { font-family: "Inter", system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 24px 16px 80px; }
+
+    header { text-align: center; margin-bottom: 36px; }
+    header h1 { font-size: 2rem; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
+    header p  { margin-top: 6px; color: var(--muted); font-size: 0.93rem; }
+
+    .container { max-width: 940px; margin: 0 auto; }
+
+    .input-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px 28px 24px; margin-bottom: 28px; }
+    .input-card label { display: block; font-size: 0.78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 10px; }
+    .input-row { display: flex; gap: 10px; }
+    .input-row input { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; color: var(--text); font-size: .97rem; font-family: "Menlo","Consolas",monospace; outline: none; transition: border-color .2s; }
+    .input-row input:focus { border-color: var(--accent); }
+    .input-row input::placeholder { color: var(--muted); }
+    .btn { padding: 12px 28px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: .95rem; font-weight: 600; cursor: pointer; transition: opacity .2s, transform .1s; white-space: nowrap; }
+    .btn:hover { opacity: .88; } .btn:active { transform: scale(.97); } .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .examples { margin-top: 12px; font-size: .82rem; color: var(--muted); }
+    .ep { display: inline-block; margin: 3px 4px 3px 0; padding: 3px 10px; background: var(--card); border: 1px solid var(--border); border-radius: 20px; cursor: pointer; font-family: monospace; font-size: .82rem; color: var(--accent); transition: background .15s; }
+    .ep:hover { background: var(--border); }
+
+    .error-box { display: none; background: rgba(239,83,80,.12); border: 1px solid rgba(239,83,80,.35); border-radius: 8px; padding: 12px 16px; color: var(--error); font-size: .9rem; margin-bottom: 20px; }
+
+    .results { display: none; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    @media(max-width:660px){ .grid { grid-template-columns: 1fr; } }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; }
+    .card-title { font-size: .75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 16px; }
+    .full { grid-column: 1 / -1; }
+
+    /* ── Structure card ── */
+    .card-struct { display: flex; flex-direction: column; align-items: center; }
+    .card-struct .svg-wrap { background: #fff; border-radius: 8px; padding: 8px; max-width: 100%; }
+    .card-struct .svg-wrap svg { display: block; max-width: 100%; height: auto; }
+    .highlight-note { margin-top: 10px; font-size: .78rem; color: var(--warn); display: flex; align-items: center; gap: 6px; }
+    .highlight-note .dot { width: 10px; height: 10px; border-radius: 50%; background: #ff8000; flex-shrink: 0; }
+    .smiles-disp { margin-top: 8px; font-family: monospace; font-size: .78rem; color: var(--muted); word-break: break-all; text-align: center; }
+
+    /* ── Key metrics ── */
+    .metrics-row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .metric { flex: 1; min-width: 100px; background: var(--card); border-radius: 10px; padding: 14px 10px 12px; text-align: center; }
+    .metric-val { font-size: 1.9rem; font-weight: 700; line-height: 1; }
+    .metric-lbl { font-size: .74rem; color: var(--muted); margin-top: 5px; font-weight: 500; }
+    .metric-sub { font-size: .70rem; color: var(--muted); margin-top: 3px; }
+    .c-logp { color: var(--accent); } .c-pka { color: var(--green); } .c-mw { color: var(--warn); }
+    .lipinski { margin-top: 14px; padding: 10px 14px; border-radius: 8px; font-size: .84rem; font-weight: 600; }
+    .lip-pass { background: rgba(62,207,142,.1); border: 1px solid rgba(62,207,142,.3); color: var(--green); }
+    .lip-fail { background: rgba(240,180,41,.1); border: 1px solid rgba(240,180,41,.3); color: var(--warn); }
+
+    /* ── Descriptors ── */
+    .dtbl { width: 100%; border-collapse: collapse; }
+    .dtbl tr+tr td { border-top: 1px solid var(--border); }
+    .dtbl td { padding: 8px 4px; font-size: .87rem; }
+    .dtbl td:first-child { color: var(--muted); width: 58%; }
+    .dtbl td:last-child  { font-weight: 600; text-align: right; }
+
+    /* ── Basic groups list ── */
+    .glist { list-style: none; }
+    .glist li { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: .87rem; }
+    .glist li:last-child { border-bottom: none; }
+    .g-name { color: var(--muted); } .g-pka { font-weight: 700; color: var(--green); }
+    .no-groups { color: var(--muted); font-size: .87rem; }
+
+    /* ── pKa interp ── */
+
+    /* ── Speciation diagram ── */
+    .spec-card { padding: 22px 24px 20px; }
+    .spec-wrap { position: relative; }
+    #spec-canvas { width: 100%; border-radius: 6px; display: block; }
+    .ph-slider-row { margin-top: 14px; display: flex; align-items: center; gap: 14px; }
+    .ph-slider-row label { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+    #ph-slider { flex: 1; -webkit-appearance: none; height: 6px; background: var(--border); border-radius: 3px; outline: none; cursor: pointer; }
+    #ph-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); cursor: pointer; border: 2px solid #fff; }
+    .ph-val { font-size: 1.1rem; font-weight: 700; color: var(--accent); min-width: 36px; text-align: right; }
+    .spec-readout { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .spec-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; font-size: .82rem; font-weight: 600; border: 1px solid; }
+    .spec-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .mean-charge { margin-top: 10px; font-size: .84rem; color: var(--muted); }
+    .mean-charge span { color: var(--text); font-weight: 600; }
+    .spec-legend { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: .78rem; color: var(--muted); }
+    .legend-swatch { width: 16px; height: 10px; border-radius: 2px; }
+
+    /* ── PubChem ── */
+    .pc-inner { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px,1fr)); gap: 10px 24px; }
+    .pf { font-size: .87rem; }
+    .pf-lbl { color: var(--muted); font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
+    .pf-val { font-weight: 600; word-break: break-all; }
+    .pka-exp { margin-top: 12px; }
+    .pka-badge { display: inline-block; background: rgba(62,207,142,.12); border: 1px solid rgba(62,207,142,.3); color: var(--green); border-radius: 6px; padding: 3px 10px; font-size: .82rem; margin: 2px 4px 2px 0; font-family: monospace; }
+    .db-links { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+    .db-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; text-decoration: none; font-size: .82rem; font-weight: 600; border: 1px solid; transition: opacity .2s; }
+    .db-link:hover { opacity: .75; }
+    .db-pc  { color: var(--accent); border-color: rgba(91,141,238,.4); background: rgba(91,141,238,.08); }
+    .db-ch  { color: var(--warn);   border-color: rgba(240,180,41,.4);  background: rgba(240,180,41,.08); }
+    .db-db  { color: var(--green);  border-color: rgba(62,207,142,.4);  background: rgba(62,207,142,.08); }
+
+    /* spinner */
+    .spinner { display: none; text-align: center; padding: 44px 0; color: var(--muted); font-size: .9rem; }
+    .spinner::before { content: ""; display: block; width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; margin: 0 auto 14px; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>ChemPredict</h1>
+    <p>Enter a SMILES code to evaluate logP, base pKa, and charge microspeciation — powered by RDKit &amp; PubChem</p>
+  </header>
+
+  <div class="input-card">
+    <label for="smi">SMILES Input</label>
+    <div class="input-row">
+      <input id="smi" type="text" placeholder="e.g. CN1CCN(CC1)c1nc2ccccc2o1" spellcheck="false" autocomplete="off" />
+      <button class="btn" id="btn" onclick="analyze()">Analyze</button>
+    </div>
+    <div class="examples">
+      Examples:
+      <span class="ep" onclick="ex('CC(=O)Oc1ccccc1C(=O)O')">Aspirin</span>
+      <span class="ep" onclick="ex('Cc1ccc(cc1Nc2nccc(n2)c3cccnc3)NC(=O)c4ccc(cc4)CN5CCN(CC5)C')">Imatinib</span>
+      <span class="ep" onclick="ex('CN1CCN(CC1)c1nc2ccccc2o1')">Quetiapine frag.</span>
+      <span class="ep" onclick="ex('c1ccc2[nH]ccc2c1')">Indole</span>
+      <span class="ep" onclick="ex('CC(C)Cc1ccc(cc1)C(C)C(=O)O')">Ibuprofen</span>
+      <span class="ep" onclick="ex('C1CN2CCN1CC2')">Piperazine</span>
+      <span class="ep" onclick="ex('NC(=N)NCCCC(N)C(=O)O')">Arg (simplified)</span>
+    </div>
+  </div>
+
+  <div class="error-box" id="err"></div>
+  <div class="spinner"  id="spin">Analyzing compound and querying PubChem…</div>
+
+  <div class="results" id="res">
+    <div class="grid">
+
+      <!-- Structure -->
+      <div class="card card-struct full">
+        <div class="card-title">Molecular Structure</div>
+        <div class="svg-wrap" id="svg-wrap"></div>
+        <div class="highlight-note" id="hl-note" style="display:none">
+          <div class="dot"></div>
+          <span id="hl-text"></span>
+        </div>
+        <div class="smiles-disp" id="canon-smi"></div>
+      </div>
+
+      <!-- Key metrics -->
+      <div class="card">
+        <div class="card-title">Key Properties</div>
+        <div class="metrics-row">
+          <div class="metric">
+            <div class="metric-val c-logp" id="v-logp">—</div>
+            <div class="metric-lbl">logP</div>
+            <div class="metric-sub">RDKit Crippen</div>
+          </div>
+          <div class="metric">
+            <div class="metric-val c-pka"  id="v-pka">—</div>
+            <div class="metric-lbl">Base pKa</div>
+            <div class="metric-sub" id="v-pka-grp">predicted</div>
+          </div>
+          <div class="metric">
+            <div class="metric-val c-mw"   id="v-mw">—</div>
+            <div class="metric-lbl">MW (Da)</div>
+            <div class="metric-sub">exact mass</div>
+          </div>
+        </div>
+        <div class="lipinski" id="lip"></div>
+      </div>
+
+      <!-- Descriptors -->
+      <div class="card">
+        <div class="card-title">Molecular Descriptors</div>
+        <table class="dtbl">
+          <tr><td>H-Bond Donors</td><td id="v-hbd">—</td></tr>
+          <tr><td>H-Bond Acceptors</td><td id="v-hba">—</td></tr>
+          <tr><td>Topological PSA (Å²)</td><td id="v-tpsa">—</td></tr>
+          <tr><td>Rotatable Bonds</td><td id="v-rot">—</td></tr>
+          <tr><td>Ring Count</td><td id="v-rings">—</td></tr>
+        </table>
+      </div>
+
+      <!-- Basic groups -->
+      <div class="card">
+        <div class="card-title">Detected Basic Groups</div>
+        <ul class="glist" id="glist"></ul>
+      </div>
+
+      <!-- Acidic groups -->
+      <div class="card">
+        <div class="card-title">Detected Acidic Groups</div>
+        <ul class="glist" id="alist"></ul>
+      </div>
+
+      <!-- ── Microspeciation ── -->
+      <div class="card spec-card full" id="spec-card" style="display:none">
+        <div class="card-title">Charge Microspeciation vs pH</div>
+
+        <div class="spec-wrap">
+          <canvas id="spec-canvas" height="240"></canvas>
+        </div>
+
+        <div class="ph-slider-row">
+          <label>pH</label>
+          <input type="range" id="ph-slider" min="0" max="14" step="0.1" value="7.4" oninput="onSlider()" />
+          <span class="ph-val" id="ph-display">7.4</span>
+        </div>
+
+        <div class="spec-readout" id="spec-readout"></div>
+        <div class="mean-charge" id="mean-charge"></div>
+        <div class="spec-legend" id="spec-legend"></div>
+      </div>
+
+      <!-- PubChem -->
+      <div class="card full" id="pc-card" style="display:none">
+        <div class="card-title">PubChem Database</div>
+        <div class="pc-inner" id="pc-inner"></div>
+        <div class="pka-exp" id="pka-exp" style="display:none">
+          <div class="pf-lbl" style="margin-bottom:6px">Experimental Dissociation Constants</div>
+          <div id="pka-exp-vals"></div>
+        </div>
+        <div class="db-links" id="db-links"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ── helpers ────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+document.getElementById('smi').addEventListener('keydown', e => {
+  if (e.key === 'Enter') analyze();
+});
+
+function ex(s) { $('smi').value = s; analyze(); }
+
+// ── charge colour map ──────────────────────────────────────────────────────
+const CHARGE_COLORS = {
+  '+5':'#003c8f', '+4':'#0d47a1', '+3':'#1565c0',
+  '+2':'#1e88e5', '+1':'#64b5f6',
+   '0':'#546e7a',
+  '-1':'#ef9a9a', '-2':'#e53935', '-3':'#b71c1c',
+  '-4':'#7f0000', '-5':'#4a0000',
+};
+function chargeKey(z) { return z >= 0 ? '+' + z : '' + z; }
+function chargeColor(z) { return CHARGE_COLORS[chargeKey(z)] || '#78909C'; }
+
+// ── speciation math ────────────────────────────────────────────────────────
+// Independent-site convolution. basicPKAs / acidicPKAs are plain number arrays.
+function calcSpeciation(basicPKAs, acidicPKAs, pH) {
+  let dist = { 0: 1.0 };
+  for (const pka of basicPKAs) {
+    const fP = 1 / (1 + Math.pow(10, pH - pka));
+    const nd = {};
+    for (const [z, p] of Object.entries(dist)) {
+      const zi = +z;
+      nd[zi]   = (nd[zi]   || 0) + p * (1 - fP);
+      nd[zi+1] = (nd[zi+1] || 0) + p * fP;
+    }
+    dist = nd;
+  }
+  for (const pka of acidicPKAs) {
+    const fD = Math.pow(10, pH - pka) / (1 + Math.pow(10, pH - pka));
+    const nd = {};
+    for (const [z, p] of Object.entries(dist)) {
+      const zi = +z;
+      nd[zi]   = (nd[zi]   || 0) + p * (1 - fD);
+      nd[zi-1] = (nd[zi-1] || 0) + p * fD;
+    }
+    dist = nd;
+  }
+  return dist;
+}
+
+function precompute(basicPKAs, acidicPKAs) {
+  const phVals = [], dists = [];
+  for (let ph = 0; ph <= 14.001; ph += 0.05) {
+    phVals.push(parseFloat(ph.toFixed(2)));
+    dists.push(calcSpeciation(basicPKAs, acidicPKAs, ph));
+  }
+  return { phVals, dists };
+}
+
+// gather all charge states that appear meaningfully (>0.001) across the curve
+function allChargeStates(dists) {
+  const seen = new Set();
+  for (const d of dists)
+    for (const [z, p] of Object.entries(d))
+      if (p > 0.001) seen.add(+z);
+  return [...seen].sort((a, b) => a - b);
+}
+
+// ── canvas chart ───────────────────────────────────────────────────────────
+let _spec = null;   // { phVals, dists, charges }
+
+function drawChart(currentPH) {
+  if (!_spec) return;
+  const canvas = $('spec-canvas');
+  const W = canvas.offsetWidth || 700;
+  canvas.width  = W * window.devicePixelRatio;
+  canvas.height = 240 * window.devicePixelRatio;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio;
+  ctx.scale(dpr, dpr);
+
+  const cW = W, cH = 240;
+  const pl = 46, pr = 14, pt = 16, pb = 36;
+  const iW = cW - pl - pr, iH = cH - pt - pb;
+
+  // background
+  ctx.fillStyle = '#0f1117';
+  ctx.fillRect(0, 0, cW, cH);
+
+  const { phVals, dists, charges } = _spec;
+  const N = phVals.length;
+
+  // stacked areas — bottom (most neg) to top (most pos)
+  const sorted = [...charges].sort((a, b) => a - b);
+
+  for (const charge of sorted) {
+    const col = chargeColor(charge);
+    ctx.fillStyle = col + 'cc'; // slight transparency
+    ctx.beginPath();
+    const top = [], bot = [];
+    for (let i = 0; i < N; i++) {
+      const d   = dists[i];
+      let cumB = 0;
+      for (const c of sorted) { if (c < charge) cumB += (d[c] || 0); }
+      const cumT = cumB + (d[charge] || 0);
+      const x  = pl + (phVals[i] / 14) * iW;
+      top.push([x, pt + (1 - cumT) * iH]);
+      bot.push([x, pt + (1 - cumB) * iH]);
+    }
+    ctx.moveTo(top[0][0], top[0][1]);
+    for (let i = 1; i < N; i++) ctx.lineTo(top[i][0], top[i][1]);
+    for (let i = N - 1; i >= 0; i--) ctx.lineTo(bot[i][0], bot[i][1]);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // axis grid
+  ctx.strokeStyle = 'rgba(46,51,80,0.7)';
+  ctx.lineWidth = 1;
+  for (let frac = 0; frac <= 1; frac += 0.25) {
+    const y = pt + (1 - frac) * iH;
+    ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(pl + iW, y); ctx.stroke();
+  }
+  for (let ph = 0; ph <= 14; ph += 2) {
+    const x = pl + (ph / 14) * iW;
+    ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, pt + iH); ctx.stroke();
+  }
+
+  // current pH line
+  const lx = pl + (currentPH / 14) * iW;
+  ctx.save();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth   = 1.5;
+  ctx.setLineDash([5, 3]);
+  ctx.beginPath(); ctx.moveTo(lx, pt); ctx.lineTo(lx, pt + iH); ctx.stroke();
+  ctx.restore();
+
+  // axes
+  ctx.strokeStyle = 'rgba(123,130,166,0.4)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pl, pt); ctx.lineTo(pl, pt + iH); ctx.lineTo(pl + iW, pt + iH); ctx.stroke();
+
+  // x labels
+  ctx.fillStyle  = '#7b82a6';
+  ctx.font       = `${11}px Inter, system-ui, sans-serif`;
+  ctx.textAlign  = 'center';
+  for (let ph = 0; ph <= 14; ph += 2) {
+    const x = pl + (ph / 14) * iW;
+    ctx.fillText(ph, x, pt + iH + 18);
+  }
+  ctx.fillText('pH', pl + iW / 2, pt + iH + 32);
+
+  // y labels
+  ctx.textAlign = 'right';
+  for (let frac = 0; frac <= 1; frac += 0.25) {
+    const y = pt + (1 - frac) * iH;
+    ctx.fillText((frac * 100).toFixed(0) + '%', pl - 5, y + 4);
+  }
+}
+
+function updateReadout(ph) {
+  if (!_spec) return;
+  const dist = calcSpeciation(_spec.basicPKAs, _spec.acidicPKAs, ph);
+  const readout = $('spec-readout');
+  const meanEl  = $('mean-charge');
+  readout.innerHTML = '';
+
+  let mean = 0;
+  const sorted = Object.entries(dist)
+    .map(([z, p]) => ({ z: +z, p }))
+    .filter(x => x.p > 0.001)
+    .sort((a, b) => b.z - a.z);
+
+  for (const { z, p } of sorted) {
+    if (p < 0.001) continue;
+    mean += z * p;
+    const chip = document.createElement('div');
+    chip.className = 'spec-chip';
+    const col = chargeColor(z);
+    chip.style.cssText = `color:${col};border-color:${col}44;background:${col}18`;
+    chip.innerHTML = `<div class="spec-dot" style="background:${col}"></div>
+      <span>${z >= 0 ? '+' + z : z}: ${(p * 100).toFixed(1)}%</span>`;
+    readout.appendChild(chip);
+  }
+  meanEl.innerHTML = `Mean charge at pH ${ph.toFixed(1)}: <span>${mean.toFixed(2)}</span>`;
+}
+
+function buildLegend() {
+  if (!_spec) return;
+  const el = $('spec-legend');
+  el.innerHTML = '';
+  const sorted = [..._spec.charges].sort((a, b) => b - a);
+  for (const z of sorted) {
+    const col = chargeColor(z);
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<div class="legend-swatch" style="background:${col}"></div>
+      <span>${z >= 0 ? '+' + z : z} charge</span>`;
+    el.appendChild(item);
+  }
+}
+
+function onSlider() {
+  const ph = parseFloat($('ph-slider').value);
+  $('ph-display').textContent = ph.toFixed(1);
+  drawChart(ph);
+  updateReadout(ph);
+}
+
+// ── main analyze ───────────────────────────────────────────────────────────
+async function analyze() {
+  const smiles = $('smi').value.trim();
+  if (!smiles) return;
+  $('err').style.display  = 'none';
+  $('res').style.display  = 'none';
+  $('spin').style.display = 'block';
+  $('btn').disabled       = true;
+
+  try {
+    const r = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ smiles }),
+    });
+    const d = await r.json();
+    if (!r.ok || d.error) { showErr(d.error || 'Analysis failed.'); return; }
+    render(d);
+  } catch (e) {
+    showErr('Network error — is the server running at localhost:5050?');
+  } finally {
+    $('spin').style.display = 'none';
+    $('btn').disabled       = false;
+  }
+}
+
+function showErr(msg) {
+  const b = $('err'); b.textContent = msg; b.style.display = 'block';
+}
+
+function render(d) {
+  // Structure SVG
+  $('svg-wrap').innerHTML = d.svg;
+  const svgEl = $('svg-wrap').querySelector('svg');
+  if (svgEl) { svgEl.style.maxWidth = '100%'; svgEl.style.height = 'auto'; }
+
+  if (d.pka_functional_group) {
+    $('hl-note').style.display = 'flex';
+    $('hl-text').textContent   =
+      `Highlighted: ${d.pka_functional_group} — strongest basic site (pKa ${d.predicted_pka?.toFixed(1)})`;
+  } else {
+    $('hl-note').style.display = 'none';
+  }
+  $('canon-smi').textContent = 'Canonical SMILES: ' + d.smiles;
+
+  // Metrics
+  $('v-logp').textContent    = d.logp?.toFixed(2) ?? 'N/A';
+  $('v-pka').textContent     = d.predicted_pka?.toFixed(1) ?? 'N/A';
+  $('v-pka-grp').textContent = d.pka_functional_group || '(no basic group)';
+  $('v-mw').textContent      = d.molecular_weight?.toFixed(1) ?? 'N/A';
+
+  const lip = checkLipinski(d);
+  const lb = $('lip');
+  lb.className = 'lipinski ' + (lip.pass ? 'lip-pass' : 'lip-fail');
+  lb.textContent = lip.pass
+    ? '✓ Passes Lipinski Ro5'
+    : '⚠ Violates Ro5: ' + lip.violations.join(', ');
+
+  // Descriptors
+  $('v-hbd').textContent  = d.hbd;
+  $('v-hba').textContent  = d.hba;
+  $('v-tpsa').textContent = d.tpsa;
+  $('v-rot').textContent  = d.rotatable_bonds;
+  $('v-rings').textContent = d.rings;
+
+  // Basic groups
+  renderGroupList('glist', d.all_basic_groups, 'green', 'No basic groups detected');
+  // Acidic groups
+  renderGroupList('alist', d.acidic_groups, 'error', 'No acidic groups detected');
+
+  // Speciation diagram
+  const basicPKAs  = (d.all_basic_groups || []).map(g => g.pka);
+  const acidicPKAs = (d.acidic_groups    || []).map(g => g.pka);
+
+  if (basicPKAs.length || acidicPKAs.length) {
+    $('spec-card').style.display = 'block';
+    const precomp = precompute(basicPKAs, acidicPKAs);
+    _spec = {
+      ...precomp,
+      charges:    allChargeStates(precomp.dists),
+      basicPKAs,
+      acidicPKAs,
+    };
+    $('ph-slider').value = '7.4';
+    $('ph-display').textContent = '7.4';
+    buildLegend();
+    requestAnimationFrame(() => { drawChart(7.4); updateReadout(7.4); });
+  } else {
+    $('spec-card').style.display = 'none';
+    _spec = null;
+  }
+
+  // PubChem
+  renderPubchem(d.pubchem);
+
+  $('res').style.display = 'block';
+  $('res').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderGroupList(elId, groups, colorVar, emptyMsg) {
+  const ul = $(elId);
+  ul.innerHTML = '';
+  if (groups && groups.length) {
+    groups.forEach(g => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="g-name">${g.group}</span>
+        <span class="g-pka" style="color:var(--${colorVar})">pKa ${g.pka.toFixed(1)}</span>`;
+      ul.appendChild(li);
+    });
+  } else {
+    ul.innerHTML = `<li class="no-groups">${emptyMsg}</li>`;
+  }
+}
+
+function checkLipinski(d) {
+  const v = [];
+  if (d.molecular_weight > 500) v.push('MW > 500');
+  if (d.logp > 5)               v.push('logP > 5');
+  if (d.hbd > 5)                v.push('HBD > 5');
+  if (d.hba > 10)               v.push('HBA > 10');
+  return { pass: v.length <= 1, violations: v };
+}
+
+function renderPubchem(pc) {
+  if (!pc || !pc.cid) { $('pc-card').style.display = 'none'; return; }
+  $('pc-card').style.display = 'block';
+
+  const inner = $('pc-inner');
+  inner.innerHTML = '';
+  [['CID', pc.cid], ['IUPAC Name', pc.iupac_name], ['Formula', pc.molecular_formula],
+   ['MW', pc.molecular_weight ? pc.molecular_weight + ' g/mol' : null],
+   ['XLogP (PubChem)', pc.xlogp]].forEach(([l, v]) => {
+    if (!v) return;
+    const d = document.createElement('div');
+    d.className = 'pf';
+    d.innerHTML = `<div class="pf-lbl">${l}</div><div class="pf-val">${v}</div>`;
+    inner.appendChild(d);
+  });
+
+  const expDiv = $('pka-exp');
+  if (pc.experimental_pka?.length) {
+    expDiv.style.display = 'block';
+    const vals = $('pka-exp-vals');
+    vals.innerHTML = '';
+    pc.experimental_pka.forEach(v => {
+      const b = document.createElement('span');
+      b.className = 'pka-badge'; b.textContent = v;
+      vals.appendChild(b);
+    });
+  } else {
+    expDiv.style.display = 'none';
+  }
+
+  const encoded = encodeURIComponent($('smi').value.trim());
+  $('db-links').innerHTML = `
+    <a class="db-link db-pc"  href="${pc.url}"  target="_blank" rel="noopener">🔗 PubChem CID ${pc.cid}</a>
+    <a class="db-link db-ch"  href="https://www.ebi.ac.uk/chembl/g/#search_results/compounds/query=${encoded}" target="_blank" rel="noopener">🔗 ChEMBL search</a>
+    <a class="db-link db-db"  href="https://go.drugbank.com/structures/search/small_molecule_drugs/structure#results" target="_blank" rel="noopener">🔗 DrugBank</a>`;
+}
+
+// Redraw chart on window resize
+window.addEventListener('resize', () => {
+  if (_spec) {
+    const ph = parseFloat($('ph-slider').value);
+    drawChart(ph);
+  }
+});
+</script>
+</body>
+</html>

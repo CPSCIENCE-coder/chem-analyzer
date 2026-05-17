@@ -1,0 +1,5 @@
+flask>=3.0
+rdkit>=2023.9
+requests>=2.31
+Pillow>=10.0
+gunicorn>=21.0
