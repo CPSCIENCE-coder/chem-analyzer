@@ -117,6 +117,51 @@
     .db-ch  { color: var(--warn);   border-color: rgba(240,180,41,.4);  background: rgba(240,180,41,.08); }
     .db-db  { color: var(--green);  border-color: rgba(62,207,142,.4);  background: rgba(62,207,142,.08); }
 
+    /* ── Drug Intelligence ── */
+    .drug-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+    .drug-name { font-size: 1.35rem; font-weight: 700; color: var(--text); }
+    .drug-name small { display: block; font-size: .78rem; font-weight: 500; color: var(--muted); margin-top: 3px; }
+    .drug-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .dbadge { padding: 4px 13px; border-radius: 20px; font-size: .76rem; font-weight: 700; border: 1px solid; white-space: nowrap; }
+    .dbadge-approved  { color: #1a7a52; background: rgba(26,122,82,.1);  border-color: rgba(26,122,82,.35); }
+    .dbadge-phase3    { color: #2a5fba; background: rgba(42,95,186,.1);  border-color: rgba(42,95,186,.35); }
+    .dbadge-phase2    { color: #2a5fba; background: rgba(42,95,186,.1);  border-color: rgba(42,95,186,.35); }
+    .dbadge-phase1    { color: #2a5fba; background: rgba(42,95,186,.1);  border-color: rgba(42,95,186,.35); }
+    .dbadge-preclin   { color: var(--muted); background: rgba(90,98,128,.08); border-color: var(--border); }
+    .dbadge-withdrawn { color: #b71c1c; background: rgba(183,28,28,.1);  border-color: rgba(183,28,28,.35); }
+    .dbadge-chembl    { color: var(--warn); background: rgba(196,125,0,.08); border-color: rgba(196,125,0,.3); text-decoration: none; }
+    .dbadge-chembl:hover { opacity: .75; }
+    .synonyms-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 18px; }
+    .syn-chip { padding: 2px 9px; background: var(--card); border: 1px solid var(--border); border-radius: 4px; font-size: .75rem; color: var(--muted); }
+    .withdrawn-box { background: rgba(183,28,28,.05); border: 1px solid rgba(183,28,28,.2); border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; }
+    .withdrawn-box .wb-title { font-size: .73rem; font-weight: 700; color: #b71c1c; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
+    .wrow { display: flex; gap: 8px; font-size: .84rem; margin-bottom: 4px; }
+    .wrow:last-child { margin-bottom: 0; }
+    .wlbl { color: var(--muted); min-width: 90px; flex-shrink: 0; }
+    .wval { color: var(--text); font-weight: 600; }
+    .drug-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media(max-width:680px){ .drug-sections { grid-template-columns: 1fr; } }
+    .dsec { background: var(--card); border-radius: 8px; padding: 14px 16px; }
+    .dsec-title { font-size: .72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
+    .dsec.full-w { grid-column: 1 / -1; }
+    .ind-list { list-style: none; }
+    .ind-list li { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: .84rem; }
+    .ind-list li:last-child { border-bottom: none; }
+    .ind-name { color: var(--text); flex: 1; }
+    .ind-phase { font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; margin-left: 8px; white-space: nowrap; color: #2a5fba; background: rgba(42,95,186,.1); border: 1px solid rgba(42,95,186,.3); }
+    .moa-list { list-style: none; }
+    .moa-list li { font-size: .84rem; padding: 5px 0; border-bottom: 1px solid var(--border); color: var(--text); }
+    .moa-list li:last-child { border-bottom: none; }
+    .moa-type { font-size: .72rem; color: var(--muted); }
+    .dtable { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    .dtable th { text-align: left; font-size: .71rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding: 0 6px 7px 0; border-bottom: 2px solid var(--border); }
+    .dtable td { padding: 6px 6px 6px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .dtable tr:last-child td { border-bottom: none; }
+    .ic50-val { font-weight: 700; color: var(--accent); white-space: nowrap; }
+    .hl-val   { font-weight: 700; color: var(--green);  white-space: nowrap; }
+    .org-tag  { display: inline-block; font-size: .70rem; padding: 1px 6px; border-radius: 4px; background: var(--border); color: var(--muted); margin-top: 2px; }
+    .no-data  { color: var(--muted); font-size: .84rem; font-style: italic; }
+
     /* spinner */
     .spinner { display: none; text-align: center; padding: 44px 0; color: var(--muted); font-size: .9rem; }
     .spinner::before { content: ""; display: block; width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; margin: 0 auto 14px; animation: spin .7s linear infinite; }
@@ -228,6 +273,48 @@
         <div class="spec-readout" id="spec-readout"></div>
         <div class="mean-charge" id="mean-charge"></div>
         <div class="spec-legend" id="spec-legend"></div>
+      </div>
+
+      <!-- Drug Intelligence (ChEMBL) -->
+      <div class="card full" id="drug-card" style="display:none">
+        <div class="card-title">Drug Intelligence</div>
+
+        <div class="drug-header">
+          <div class="drug-name" id="drug-name">—<small id="drug-synonyms-line"></small></div>
+          <div class="drug-badges" id="drug-badges"></div>
+        </div>
+
+        <div class="synonyms-row" id="synonyms-row"></div>
+        <div id="withdrawn-box"></div>
+
+        <div class="drug-sections">
+          <!-- Mechanism of action -->
+          <div class="dsec" id="dsec-moa" style="display:none">
+            <div class="dsec-title">Mechanism of Action</div>
+            <ul class="moa-list" id="moa-list"></ul>
+          </div>
+          <!-- Indications -->
+          <div class="dsec" id="dsec-ind" style="display:none">
+            <div class="dsec-title">Therapeutic Indications</div>
+            <ul class="ind-list" id="ind-list"></ul>
+          </div>
+          <!-- IC50 -->
+          <div class="dsec full-w" id="dsec-ic50" style="display:none">
+            <div class="dsec-title">Potency — IC₅₀</div>
+            <table class="dtable">
+              <thead><tr><th>Target</th><th>IC₅₀</th><th>Organism</th></tr></thead>
+              <tbody id="ic50-body"></tbody>
+            </table>
+          </div>
+          <!-- Half-life -->
+          <div class="dsec full-w" id="dsec-hl" style="display:none">
+            <div class="dsec-title">Pharmacokinetics — Half-life (t½)</div>
+            <table class="dtable">
+              <thead><tr><th>t½ Value</th><th>Organism</th><th>Assay / Notes</th></tr></thead>
+              <tbody id="hl-body"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <!-- PubChem -->
@@ -544,6 +631,9 @@ function render(d) {
     _spec = null;
   }
 
+  // Drug Intelligence (ChEMBL)
+  renderDrugCard(d.chembl);
+
   // PubChem
   renderPubchem(d.pubchem);
 
@@ -573,6 +663,152 @@ function checkLipinski(d) {
   if (d.hbd > 5)                v.push('HBD > 5');
   if (d.hba > 10)               v.push('HBA > 10');
   return { pass: v.length <= 1, violations: v };
+}
+
+function phaseLabel(p) {
+  if (p === null || p === undefined) return null;
+  if (p >= 4)   return ['Approved',  'dbadge-approved'];
+  if (p >= 3)   return ['Phase III', 'dbadge-phase3'];
+  if (p >= 2)   return ['Phase II',  'dbadge-phase2'];
+  if (p >= 1)   return ['Phase I',   'dbadge-phase1'];
+  if (p >= 0.5) return ['Early Phase I', 'dbadge-phase1'];
+  return ['Preclinical', 'dbadge-preclin'];
+}
+
+function fmtIC50(val, units) {
+  units = (units || 'nM').trim();
+  if (units === 'nM') {
+    if (val >= 1000) return `${(val/1000).toFixed(2)} µM`;
+    return `${val % 1 === 0 ? val : val.toFixed(1)} nM`;
+  }
+  return `${val} ${units}`;
+}
+
+function fmtHL(val, units) {
+  units = (units || 'h').trim().toLowerCase();
+  if (units === 'h' || units === 'hr' || units === 'hours') return `${val} h`;
+  if (units === 'min' || units === 'minutes') return `${val} min`;
+  return `${val} ${units}`;
+}
+
+function renderDrugCard(c) {
+  const card = $('drug-card');
+  if (!c) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  // Name
+  $('drug-name').textContent = c.name || c.chembl_id || 'Unknown compound';
+
+  // Badges
+  const badges = $('drug-badges');
+  badges.innerHTML = '';
+  const addBadge = (text, cls, href) => {
+    const el = document.createElement(href ? 'a' : 'span');
+    el.className = `dbadge ${cls}`;
+    el.textContent = text;
+    if (href) { el.href = href; el.target = '_blank'; el.rel = 'noopener'; }
+    badges.appendChild(el);
+  };
+
+  if (c.withdrawn) {
+    addBadge('Withdrawn / Discontinued', 'dbadge-withdrawn');
+  } else {
+    const pl = phaseLabel(c.max_phase);
+    if (pl) addBadge(pl[0], pl[1]);
+  }
+  if (c.chembl_id) addBadge(`ChEMBL: ${c.chembl_id}`, 'dbadge-chembl', c.url);
+
+  // Synonyms
+  const synRow = $('synonyms-row');
+  synRow.innerHTML = '';
+  (c.synonyms || []).forEach(s => {
+    const chip = document.createElement('span');
+    chip.className = 'syn-chip';
+    chip.textContent = s;
+    synRow.appendChild(chip);
+  });
+
+  // Withdrawn box
+  const wb = $('withdrawn-box');
+  if (c.withdrawn) {
+    let html = `<div class="withdrawn-box"><div class="wb-title">Discontinuation / Withdrawal Details</div>`;
+    if (c.withdrawn_reason)  html += `<div class="wrow"><span class="wlbl">Reason</span><span class="wval">${c.withdrawn_reason}</span></div>`;
+    if (c.withdrawn_class)   html += `<div class="wrow"><span class="wlbl">Class</span><span class="wval">${c.withdrawn_class}</span></div>`;
+    if (c.withdrawn_year)    html += `<div class="wrow"><span class="wlbl">Year</span><span class="wval">${c.withdrawn_year}</span></div>`;
+    if (c.withdrawn_country) html += `<div class="wrow"><span class="wlbl">Country</span><span class="wval">${c.withdrawn_country}</span></div>`;
+    html += `</div>`;
+    wb.innerHTML = html;
+  } else {
+    wb.innerHTML = '';
+  }
+
+  // Mechanism of action
+  const moaSec = $('dsec-moa');
+  const moaList = $('moa-list');
+  if (c.mechanisms && c.mechanisms.length) {
+    moaSec.style.display = 'block';
+    moaList.innerHTML = '';
+    c.mechanisms.forEach(m => {
+      const li = document.createElement('li');
+      li.innerHTML = `${m.action}${m.type ? `<br><span class="moa-type">${m.type}${m.target ? ' · ' + m.target : ''}</span>` : ''}`;
+      moaList.appendChild(li);
+    });
+  } else {
+    moaSec.style.display = 'none';
+  }
+
+  // Indications
+  const indSec  = $('dsec-ind');
+  const indList = $('ind-list');
+  if (c.indications && c.indications.length) {
+    indSec.style.display = 'block';
+    indList.innerHTML = '';
+    c.indications.slice(0, 12).forEach(ind => {
+      const li = document.createElement('li');
+      const pl = ind.phase != null ? phaseLabel(ind.phase) : null;
+      li.innerHTML = `<span class="ind-name">${ind.name}</span>
+        ${pl ? `<span class="ind-phase">${pl[0]}</span>` : ''}`;
+      indList.appendChild(li);
+    });
+  } else {
+    indSec.style.display = 'none';
+  }
+
+  // IC50
+  const ic50Sec  = $('dsec-ic50');
+  const ic50Body = $('ic50-body');
+  if (c.ic50 && c.ic50.length) {
+    ic50Sec.style.display = 'block';
+    ic50Body.innerHTML = '';
+    c.ic50.forEach(row => {
+      const tr = document.createElement('tr');
+      const orgTag = row.organism ? `<span class="org-tag">${row.organism}</span>` : '';
+      tr.innerHTML = `<td>${row.target}</td>
+        <td><span class="ic50-val">${fmtIC50(row.value, row.units)}</span></td>
+        <td>${orgTag}</td>`;
+      ic50Body.appendChild(tr);
+    });
+  } else {
+    ic50Sec.style.display = 'none';
+  }
+
+  // Half-life
+  const hlSec  = $('dsec-hl');
+  const hlBody = $('hl-body');
+  if (c.halflife && c.halflife.length) {
+    hlSec.style.display = 'block';
+    hlBody.innerHTML = '';
+    c.halflife.forEach(row => {
+      const tr = document.createElement('tr');
+      const orgTag = row.organism ? `<span class="org-tag">${row.organism}</span>` : '';
+      tr.innerHTML = `<td><span class="hl-val">${fmtHL(row.value, row.units)}</span></td>
+        <td>${orgTag}</td>
+        <td style="color:var(--muted);font-size:.78rem">${row.description || ''}</td>`;
+      hlBody.appendChild(tr);
+    });
+  } else {
+    hlSec.style.display = 'none';
+  }
 }
 
 function renderPubchem(pc) {

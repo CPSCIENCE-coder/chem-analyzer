@@ -4,12 +4,13 @@ from rdkit.Chem import Draw, AllChem
 from rdkit.Chem.Crippen import MolLogP
 from rdkit.Chem import rdMolDescriptors
 from rdkit.Chem.Draw import rdMolDraw2D
+from rdkit.Chem.inchi import MolToInchiKey
+from concurrent.futures import ThreadPoolExecutor
 import requests
 import urllib.parse
 
 app = Flask(__name__)
 
-# Basic groups — pKa_BH+ (conjugate acid), order matters: more specific first
 BASE_PKA_SMARTS = [
     ("NC(=N)N",                      12.5, "Guanidine"),
     ("NC(=N)",                       11.6, "Amidine"),
@@ -28,7 +29,6 @@ BASE_PKA_SMARTS = [
     ("[NH]c",                         3.5, "Secondary aromatic amine"),
 ]
 
-# Acidic groups — pKa_AH (proton donor), most acidic first
 ACIDIC_PKA_SMARTS = [
     ("S(=O)(=O)[OH]",  1.5,  "Sulfonic acid"),
     ("C(=O)[OH]",      4.2,  "Carboxylic acid"),
@@ -39,12 +39,12 @@ ACIDIC_PKA_SMARTS = [
 ]
 
 
+# ── Chemistry helpers ──────────────────────────────────────────────────────
+
 def mol_to_svg(mol, highlight_atoms=None, size=(480, 300)):
-    """Return an SVG string with optional orange highlighting on given atom indices."""
     AllChem.Compute2DCoords(mol)
     drawer = rdMolDraw2D.MolDraw2DSVG(size[0], size[1])
     drawer.drawOptions().padding = 0.13
-
     if highlight_atoms:
         atom_set = set(highlight_atoms)
         a_colors = {i: (1.0, 0.50, 0.0) for i in atom_set}
@@ -64,7 +64,6 @@ def mol_to_svg(mol, highlight_atoms=None, size=(480, 300)):
                             highlightAtomRadii=a_radii)
     else:
         drawer.DrawMolecule(mol)
-
     drawer.FinishDrawing()
     return drawer.GetDrawingText()
 
@@ -74,36 +73,25 @@ def calculate_logp(mol):
 
 
 def predict_base_pka(mol):
-    """Return (top_pka, top_group, all_groups_list, highlight_atom_indices).
-    Deduplicates by tracking which nitrogen atoms have been claimed."""
-    claimed = set()
-    hits = []
-
+    claimed, hits = set(), []
     for smarts, pka, name in BASE_PKA_SMARTS:
         pat = Chem.MolFromSmarts(smarts)
         if pat is None:
             continue
         for match in mol.GetSubstructMatches(pat):
-            # The first atom in the match is treated as the key ionisable atom
             key = match[0]
             if key not in claimed:
                 claimed.add(key)
                 hits.append({"pka": pka, "group": name, "atoms": list(match)})
-
     if not hits:
         return None, None, [], []
-
     hits.sort(key=lambda x: x["pka"], reverse=True)
     top = hits[0]
-    all_groups = [{"pka": h["pka"], "group": h["group"]} for h in hits]
-    return top["pka"], top["group"], all_groups, top["atoms"]
+    return top["pka"], top["group"], [{"pka": h["pka"], "group": h["group"]} for h in hits], top["atoms"]
 
 
 def predict_acidic_pka(mol):
-    """Return list of {pka, group} for each distinct acidic site found."""
-    claimed = set()
-    hits = []
-
+    claimed, hits = set(), []
     for smarts, pka, name in ACIDIC_PKA_SMARTS:
         pat = Chem.MolFromSmarts(smarts)
         if pat is None:
@@ -113,60 +101,215 @@ def predict_acidic_pka(mol):
             if key not in claimed:
                 claimed.add(key)
                 hits.append({"pka": pka, "group": name})
-
     hits.sort(key=lambda x: x["pka"])
     return hits
 
 
-def get_pubchem_cid(smiles):
+# ── PubChem ────────────────────────────────────────────────────────────────
+
+def get_all_pubchem(smiles):
     try:
         encoded = urllib.parse.quote(smiles)
-        url = (f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/"
-               f"{encoded}/cids/JSON")
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            return r.json()["IdentifierList"]["CID"][0]
+        cid_r = requests.get(
+            f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/{encoded}/cids/JSON",
+            timeout=10)
+        if cid_r.status_code != 200:
+            return {}
+        cid = cid_r.json()["IdentifierList"]["CID"][0]
     except Exception:
-        pass
-    return None
+        return {}
 
-
-def get_pubchem_properties(cid):
+    props, exp_pka = None, None
     try:
-        props = "IUPACName,MolecularFormula,MolecularWeight,XLogP"
-        url = (f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/"
-               f"{cid}/property/{props}/JSON")
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            return r.json()["PropertyTable"]["Properties"][0]
+        p = requests.get(
+            f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}"
+            f"/property/IUPACName,MolecularFormula,MolecularWeight,XLogP/JSON",
+            timeout=10)
+        if p.status_code == 200:
+            props = p.json()["PropertyTable"]["Properties"][0]
     except Exception:
         pass
-    return None
-
-
-def get_pubchem_experimental_pka(cid):
     try:
-        url = (f"https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/"
-               f"{cid}/JSON/?heading=Dissociation+Constants")
-        r = requests.get(url, timeout=10)
-        if r.status_code != 200:
-            return None
-        data = r.json()
-        values = []
-        for section in data.get("Record", {}).get("Section", []):
-            for subsec in section.get("Section", []):
-                for prop in subsec.get("Section", []):
-                    if "Dissociation" in prop.get("TOCHeading", ""):
-                        for info in prop.get("Information", []):
-                            for item in info.get("Value", {}).get("StringWithMarkup", []):
-                                s = item.get("String", "").strip()
-                                if s:
-                                    values.append(s)
-        return values if values else None
+        pka_r = requests.get(
+            f"https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/{cid}"
+            f"/JSON/?heading=Dissociation+Constants",
+            timeout=10)
+        if pka_r.status_code == 200:
+            values = []
+            for sec in pka_r.json().get("Record", {}).get("Section", []):
+                for sub in sec.get("Section", []):
+                    for prop in sub.get("Section", []):
+                        if "Dissociation" in prop.get("TOCHeading", ""):
+                            for info in prop.get("Information", []):
+                                for item in info.get("Value", {}).get("StringWithMarkup", []):
+                                    s = item.get("String", "").strip()
+                                    if s:
+                                        values.append(s)
+            exp_pka = values if values else None
     except Exception:
         pass
-    return None
 
+    return {
+        "cid": cid,
+        "iupac_name":        props.get("IUPACName") if props else None,
+        "molecular_formula": props.get("MolecularFormula") if props else None,
+        "molecular_weight":  props.get("MolecularWeight") if props else None,
+        "xlogp":             props.get("XLogP") if props else None,
+        "experimental_pka":  exp_pka,
+        "url": f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid}",
+    }
+
+
+# ── ChEMBL ─────────────────────────────────────────────────────────────────
+
+CHEMBL = "https://www.ebi.ac.uk/chembl/api/data"
+
+
+def _cget(url, timeout=12):
+    try:
+        r = requests.get(url, timeout=timeout)
+        return r.json() if r.status_code == 200 else None
+    except Exception:
+        return None
+
+
+def get_chembl_data(smiles):
+    # Use InChI key for reliable exact-match lookup
+    rdmol = Chem.MolFromSmiles(smiles)
+    if rdmol is None:
+        return None
+    try:
+        inchikey = MolToInchiKey(rdmol)
+    except Exception:
+        inchikey = None
+
+    mol = None
+    if inchikey:
+        data = _cget(f"{CHEMBL}/molecule/{inchikey}.json")
+        if data and data.get("molecule_chembl_id"):
+            mol = data
+
+    # Fall back to 85 % similarity search
+    if mol is None:
+        encoded = urllib.parse.quote(smiles)
+        sim = _cget(f"{CHEMBL}/similarity/{encoded}/85.json?limit=1")
+        mols = (sim or {}).get("molecules", [])
+        if mols:
+            mol = mols[0]
+
+    if mol is None:
+        return None
+
+    cid = mol["molecule_chembl_id"]
+
+    # 2 — parallel sub-queries
+    urls = {
+        "ind":   f"{CHEMBL}/drug_indication.json?molecule_chembl_id={cid}&limit=25",
+        "ic50":  f"{CHEMBL}/activity.json?molecule_chembl_id={cid}&standard_type=IC50&limit=30",
+        "hl":    f"{CHEMBL}/activity.json?molecule_chembl_id={cid}&standard_type=Half+life&limit=15",
+        "hl2":   f"{CHEMBL}/activity.json?molecule_chembl_id={cid}&standard_type=t1%2F2&limit=15",
+        "mech":  f"{CHEMBL}/mechanism.json?molecule_chembl_id={cid}&limit=10",
+    }
+    res = {}
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        futs = {ex.submit(_cget, u): k for k, u in urls.items()}
+        for f in futs:
+            res[futs[f]] = f.result()
+
+    # Indications
+    indications = []
+    for ind in (res.get("ind") or {}).get("drug_indications", []):
+        if ind.get("mesh_heading"):
+            indications.append({
+                "name":  ind["mesh_heading"],
+                "phase": ind.get("max_phase_for_ind"),
+            })
+
+    # IC50 — deduplicate by target, sort ascending (most potent first)
+    ic50_list = []
+    seen = set()
+    raw_acts = (res.get("ic50") or {}).get("activities", [])
+    raw_acts.sort(key=lambda a: float(a["standard_value"]) if a.get("standard_value") else 1e9)
+    for act in raw_acts:
+        target = act.get("target_pref_name") or act.get("target_chembl_id")
+        val    = act.get("standard_value")
+        if not target or not val:
+            continue
+        try:
+            fval = float(val)
+        except ValueError:
+            continue
+        if fval > 1e6 or target in seen:
+            continue
+        seen.add(target)
+        ic50_list.append({
+            "target":   target,
+            "value":    fval,
+            "units":    act.get("standard_units", "nM"),
+            "organism": act.get("target_organism", ""),
+        })
+        if len(ic50_list) >= 6:
+            break
+
+    # Half-life (merge both standard_type queries)
+    hl_list = []
+    for key in ("hl", "hl2"):
+        for act in (res.get(key) or {}).get("activities", []):
+            val = act.get("standard_value")
+            if not val:
+                continue
+            try:
+                fval = float(val)
+            except ValueError:
+                continue
+            org = (act.get("target_organism") or act.get("assay_organism") or "").strip()
+            desc = (act.get("assay_description") or "")[:120]
+            hl_list.append({
+                "value":       fval,
+                "units":       act.get("standard_units") or "h",
+                "organism":    org,
+                "description": desc,
+            })
+    hl_list = hl_list[:6]
+
+    # Mechanisms of action
+    mechanisms = []
+    for m in (res.get("mech") or {}).get("mechanisms", []):
+        if m.get("mechanism_of_action"):
+            mechanisms.append({
+                "action": m["mechanism_of_action"],
+                "target": m.get("target_name", ""),
+                "type":   m.get("action_type", ""),
+            })
+
+    # Synonyms (skip duplicates of pref_name)
+    pref = (mol.get("pref_name") or "").upper()
+    synonyms = list({
+        s["molecule_synonym"]
+        for s in mol.get("molecule_synonyms", [])
+        if s.get("molecule_synonym") and s["molecule_synonym"].upper() != pref
+    })[:8]
+
+    return {
+        "chembl_id":         cid,
+        "name":              mol.get("pref_name"),
+        "max_phase":         mol.get("max_phase"),
+        "withdrawn":         mol.get("withdrawn_flag"),
+        "withdrawn_reason":  mol.get("withdrawn_reason"),
+        "withdrawn_class":   mol.get("withdrawn_class"),
+        "withdrawn_year":    mol.get("withdrawn_year"),
+        "withdrawn_country": mol.get("withdrawn_country"),
+        "indication_class":  mol.get("indication_class"),
+        "synonyms":          synonyms,
+        "indications":       indications,
+        "ic50":              ic50_list,
+        "halflife":          hl_list,
+        "mechanisms":        mechanisms,
+        "url": f"https://www.ebi.ac.uk/chembl/compound_report_card/{cid}/",
+    }
+
+
+# ── Flask routes ───────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
@@ -175,7 +318,7 @@ def index():
 
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
-    body = request.get_json(force=True)
+    body   = request.get_json(force=True)
     smiles = (body.get("smiles") or "").strip()
 
     if not smiles:
@@ -190,9 +333,7 @@ def analyze():
     logp = calculate_logp(mol)
     pred_pka, pka_group, all_basic, highlight_atoms = predict_base_pka(mol)
     acidic_groups = predict_acidic_pka(mol)
-
-    # SVG with top basic site circled in orange
-    svg = mol_to_svg(mol, highlight_atoms if highlight_atoms else None)
+    svg = mol_to_svg(mol, highlight_atoms or None)
 
     mw        = round(rdMolDescriptors.CalcExactMolWt(mol), 3)
     hbd       = rdMolDescriptors.CalcNumHBD(mol)
@@ -201,20 +342,12 @@ def analyze():
     rot_bonds = rdMolDescriptors.CalcNumRotatableBonds(mol)
     rings     = rdMolDescriptors.CalcNumRings(mol)
 
-    pubchem = {}
-    cid = get_pubchem_cid(canonical)
-    if cid:
-        props   = get_pubchem_properties(cid)
-        exp_pka = get_pubchem_experimental_pka(cid)
-        pubchem = {
-            "cid": cid,
-            "iupac_name":       props.get("IUPACName") if props else None,
-            "molecular_formula":props.get("MolecularFormula") if props else None,
-            "molecular_weight": props.get("MolecularWeight") if props else None,
-            "xlogp":            props.get("XLogP") if props else None,
-            "experimental_pka": exp_pka,
-            "url": f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid}",
-        }
+    # PubChem + ChEMBL in parallel
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_pc  = ex.submit(get_all_pubchem, canonical)
+        f_che = ex.submit(get_chembl_data, canonical)
+        pubchem = f_pc.result()
+        chembl  = f_che.result()
 
     return jsonify({
         "smiles":               canonical,
@@ -229,6 +362,7 @@ def analyze():
         "rotatable_bonds":      rot_bonds,
         "rings":                rings,
         "pubchem":              pubchem,
+        "chembl":               chembl,
     })
 
 
