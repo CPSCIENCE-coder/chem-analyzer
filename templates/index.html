@@ -7,16 +7,16 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg:      #0f1117;
-      --surface: #1a1d27;
-      --card:    #21253a;
-      --border:  #2e3350;
-      --accent:  #5b8dee;
-      --green:   #3ecf8e;
-      --warn:    #f0b429;
-      --text:    #e8eaf2;
-      --muted:   #7b82a6;
-      --error:   #ef5350;
+      --bg:      #f4f6fb;
+      --surface: #ffffff;
+      --card:    #f0f2f8;
+      --border:  #d6daea;
+      --accent:  #3d6fd4;
+      --green:   #1a9e6e;
+      --warn:    #c47d00;
+      --text:    #1a1d2e;
+      --muted:   #5a6280;
+      --error:   #d32f2f;
       --radius:  12px;
     }
     body { font-family: "Inter", system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 24px 16px 80px; }
@@ -329,7 +329,7 @@ function drawChart(currentPH) {
   const iW = cW - pl - pr, iH = cH - pt - pb;
 
   // background
-  ctx.fillStyle = '#0f1117';
+  ctx.fillStyle = '#f0f2f8';
   ctx.fillRect(0, 0, cW, cH);
 
   const { phVals, dists, charges } = _spec;
@@ -360,7 +360,7 @@ function drawChart(currentPH) {
   }
 
   // axis grid
-  ctx.strokeStyle = 'rgba(46,51,80,0.7)';
+  ctx.strokeStyle = 'rgba(180,186,210,0.8)';
   ctx.lineWidth = 1;
   for (let frac = 0; frac <= 1; frac += 0.25) {
     const y = pt + (1 - frac) * iH;
@@ -374,19 +374,19 @@ function drawChart(currentPH) {
   // current pH line
   const lx = pl + (currentPH / 14) * iW;
   ctx.save();
-  ctx.strokeStyle = '#ffffff';
+  ctx.strokeStyle = '#333333';
   ctx.lineWidth   = 1.5;
   ctx.setLineDash([5, 3]);
   ctx.beginPath(); ctx.moveTo(lx, pt); ctx.lineTo(lx, pt + iH); ctx.stroke();
   ctx.restore();
 
   // axes
-  ctx.strokeStyle = 'rgba(123,130,166,0.4)';
+  ctx.strokeStyle = 'rgba(90,98,128,0.5)';
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(pl, pt); ctx.lineTo(pl, pt + iH); ctx.lineTo(pl + iW, pt + iH); ctx.stroke();
 
   // x labels
-  ctx.fillStyle  = '#7b82a6';
+  ctx.fillStyle  = '#5a6280';
   ctx.font       = `${11}px Inter, system-ui, sans-serif`;
   ctx.textAlign  = 'center';
   for (let ph = 0; ph <= 14; ph += 2) {
