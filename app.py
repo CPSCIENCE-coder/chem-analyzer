@@ -216,16 +216,18 @@ def get_chembl_data(smiles):
         for f in futs:
             res[futs[f]] = f.result()
 
-    # Indications
+    # Indications — include ClinicalTrials search URL per indication
     indications = []
     for ind in (res.get("ind") or {}).get("drug_indications", []):
         if ind.get("mesh_heading"):
+            name_q = urllib.parse.quote(f"{mol.get('pref_name','')} {ind['mesh_heading']}")
             indications.append({
                 "name":  ind["mesh_heading"],
                 "phase": ind.get("max_phase_for_ind"),
+                "trials_url": f"https://clinicaltrials.gov/search?term={name_q}",
             })
 
-    # IC50 — deduplicate by target, sort ascending (most potent first)
+    # IC50 — include assay + target ChEMBL reference links
     ic50_list = []
     seen = set()
     raw_acts = (res.get("ic50") or {}).get("activities", [])
@@ -242,16 +244,20 @@ def get_chembl_data(smiles):
         if fval > 1e6 or target in seen:
             continue
         seen.add(target)
+        assay_id  = act.get("assay_chembl_id")
+        target_id = act.get("target_chembl_id")
         ic50_list.append({
-            "target":   target,
-            "value":    fval,
-            "units":    act.get("standard_units", "nM"),
-            "organism": act.get("target_organism", ""),
+            "target":      target,
+            "value":       fval,
+            "units":       act.get("standard_units", "nM"),
+            "organism":    act.get("target_organism", ""),
+            "assay_url":   f"https://www.ebi.ac.uk/chembl/assay_report_card/{assay_id}/" if assay_id else None,
+            "target_url":  f"https://www.ebi.ac.uk/chembl/target_report_card/{target_id}/" if target_id else None,
         })
         if len(ic50_list) >= 6:
             break
 
-    # Half-life (merge both standard_type queries)
+    # Half-life
     hl_list = []
     for key in ("hl", "hl2"):
         for act in (res.get(key) or {}).get("activities", []):
@@ -262,27 +268,31 @@ def get_chembl_data(smiles):
                 fval = float(val)
             except ValueError:
                 continue
-            org = (act.get("target_organism") or act.get("assay_organism") or "").strip()
+            org  = (act.get("target_organism") or act.get("assay_organism") or "").strip()
             desc = (act.get("assay_description") or "")[:120]
+            assay_id = act.get("assay_chembl_id")
             hl_list.append({
-                "value":       fval,
-                "units":       act.get("standard_units") or "h",
-                "organism":    org,
+                "value":     fval,
+                "units":     act.get("standard_units") or "h",
+                "organism":  org,
                 "description": desc,
+                "assay_url": f"https://www.ebi.ac.uk/chembl/assay_report_card/{assay_id}/" if assay_id else None,
             })
     hl_list = hl_list[:6]
 
-    # Mechanisms of action
+    # Mechanisms — include ChEMBL target URL
     mechanisms = []
     for m in (res.get("mech") or {}).get("mechanisms", []):
         if m.get("mechanism_of_action"):
+            target_id = m.get("target_chembl_id")
             mechanisms.append({
-                "action": m["mechanism_of_action"],
-                "target": m.get("target_name", ""),
-                "type":   m.get("action_type", ""),
+                "action":     m["mechanism_of_action"],
+                "target":     m.get("target_name", ""),
+                "type":       m.get("action_type", ""),
+                "target_url": f"https://www.ebi.ac.uk/chembl/target_report_card/{target_id}/" if target_id else None,
             })
 
-    # Synonyms (skip duplicates of pref_name)
+    # Synonyms
     pref = (mol.get("pref_name") or "").upper()
     synonyms = list({
         s["molecule_synonym"]
@@ -290,9 +300,10 @@ def get_chembl_data(smiles):
         if s.get("molecule_synonym") and s["molecule_synonym"].upper() != pref
     })[:8]
 
+    name = mol.get("pref_name") or ""
     return {
         "chembl_id":         cid,
-        "name":              mol.get("pref_name"),
+        "name":              name,
         "max_phase":         mol.get("max_phase"),
         "withdrawn":         mol.get("withdrawn_flag"),
         "withdrawn_reason":  mol.get("withdrawn_reason"),
@@ -305,8 +316,84 @@ def get_chembl_data(smiles):
         "ic50":              ic50_list,
         "halflife":          hl_list,
         "mechanisms":        mechanisms,
-        "url": f"https://www.ebi.ac.uk/chembl/compound_report_card/{cid}/",
+        "url":               f"https://www.ebi.ac.uk/chembl/compound_report_card/{cid}/",
+        "trials_url":        f"https://clinicaltrials.gov/search?term={urllib.parse.quote(name)}",
+        "pubmed_url":        f"https://pubmed.ncbi.nlm.nih.gov/?term={urllib.parse.quote(name)}&sort=date",
+        "drugbank_url":      f"https://go.drugbank.com/unearth/q?query={urllib.parse.quote(name)}&searcher=drugs",
     }
+
+
+# ── PubMed recent publications ─────────────────────────────────────────────
+
+def get_pubmed_news(name, max_results=6):
+    if not name:
+        return []
+    try:
+        q = urllib.parse.quote(f"{name}[Title/Abstract]")
+        search = _cget(
+            f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+            f"?db=pubmed&term={q}&sort=date&retmax={max_results}"
+            f"&datetype=pdat&reldate=1095&retmode=json",   # last 3 years
+            timeout=12)
+        ids = (search or {}).get("esearchresult", {}).get("idlist", [])
+        if not ids:
+            return []
+        ids_str = ",".join(ids)
+        summary = _cget(
+            f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+            f"?db=pubmed&id={ids_str}&retmode=json",
+            timeout=12)
+        result = (summary or {}).get("result", {})
+        articles = []
+        for pmid in ids:
+            art = result.get(pmid, {})
+            if not art or art.get("error"):
+                continue
+            authors = [a.get("name", "") for a in art.get("authors", [])[:3]]
+            articles.append({
+                "title":   art.get("title", "").rstrip("."),
+                "journal": art.get("source", ""),
+                "date":    art.get("pubdate", ""),
+                "authors": authors,
+                "pmid":    pmid,
+                "url":     f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+            })
+        return articles
+    except Exception:
+        return []
+
+
+# ── ClinicalTrials.gov ──────────────────────────────────────────────────────
+
+def get_clinical_trials(name, max_results=5):
+    if not name:
+        return []
+    try:
+        q = urllib.parse.quote(name)
+        data = _cget(
+            f"https://clinicaltrials.gov/api/v2/studies"
+            f"?query.term={q}&sort=LastUpdatePostDate:desc&pageSize={max_results}"
+            f"&fields=NCTId,BriefTitle,OverallStatus,Phase,StartDate",
+            timeout=12)
+        studies = (data or {}).get("studies", [])
+        trials = []
+        for s in studies:
+            proto  = s.get("protocolSection", {})
+            id_mod = proto.get("identificationModule", {})
+            st_mod = proto.get("statusModule", {})
+            dg_mod = proto.get("designModule", {})
+            nct    = id_mod.get("nctId")
+            trials.append({
+                "nct_id":  nct,
+                "title":   id_mod.get("briefTitle", ""),
+                "status":  st_mod.get("overallStatus", ""),
+                "phases":  dg_mod.get("phases", []),
+                "start":   (st_mod.get("startDateStruct") or {}).get("date", ""),
+                "url":     f"https://clinicaltrials.gov/study/{nct}" if nct else "#",
+            })
+        return trials
+    except Exception:
+        return []
 
 
 # ── Flask routes ───────────────────────────────────────────────────────────
@@ -349,6 +436,14 @@ def analyze():
         pubchem = f_pc.result()
         chembl  = f_che.result()
 
+    # PubMed news + ClinicalTrials in parallel (use compound name if found)
+    compound_name = (chembl or {}).get("name") or (pubchem or {}).get("iupac_name") or ""
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_news   = ex.submit(get_pubmed_news,     compound_name)
+        f_trials = ex.submit(get_clinical_trials, compound_name)
+        news   = f_news.result()
+        trials = f_trials.result()
+
     return jsonify({
         "smiles":               canonical,
         "svg":                  svg,
@@ -363,6 +458,8 @@ def analyze():
         "rings":                rings,
         "pubchem":              pubchem,
         "chembl":               chembl,
+        "news":                 news,
+        "trials":               trials,
     })
 
 

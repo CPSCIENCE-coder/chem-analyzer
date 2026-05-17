@@ -161,6 +161,29 @@
     .hl-val   { font-weight: 700; color: var(--green);  white-space: nowrap; }
     .org-tag  { display: inline-block; font-size: .70rem; padding: 1px 6px; border-radius: 4px; background: var(--border); color: var(--muted); margin-top: 2px; }
     .no-data  { color: var(--muted); font-size: .84rem; font-style: italic; }
+    .ref-link { display: inline-flex; align-items: center; margin-left: 6px; color: var(--accent); font-size: .72rem; text-decoration: none; opacity: .75; vertical-align: middle; }
+    .ref-link:hover { opacity: 1; }
+
+    /* ── News ── */
+    .news-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+    .news-item { padding: 14px 16px; background: var(--card); border-radius: 8px; border-left: 3px solid var(--accent); }
+    .news-title { font-size: .9rem; font-weight: 600; color: var(--text); text-decoration: none; display: block; margin-bottom: 5px; line-height: 1.4; }
+    .news-title:hover { color: var(--accent); }
+    .news-meta  { font-size: .76rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+    .news-meta .tag { background: var(--border); padding: 1px 7px; border-radius: 4px; }
+
+    /* ── Trials ── */
+    .trials-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .trial-item  { padding: 12px 16px; background: var(--card); border-radius: 8px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+    .trial-title { font-size: .86rem; font-weight: 600; color: var(--text); flex: 1; }
+    .trial-right { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
+    .trial-status { font-size: .73rem; font-weight: 700; padding: 2px 9px; border-radius: 10px; white-space: nowrap; }
+    .ts-recruiting   { background: rgba(26,122,82,.12); color: #1a7a52; border: 1px solid rgba(26,122,82,.3); }
+    .ts-completed    { background: rgba(90,98,128,.1);  color: var(--muted); border: 1px solid var(--border); }
+    .ts-active       { background: rgba(42,95,186,.1);  color: #2a5fba; border: 1px solid rgba(42,95,186,.3); }
+    .ts-other        { background: rgba(196,125,0,.1);  color: var(--warn); border: 1px solid rgba(196,125,0,.3); }
+    .trial-link { font-size: .76rem; color: var(--accent); text-decoration: none; }
+    .trial-link:hover { text-decoration: underline; }
 
     /* spinner */
     .spinner { display: none; text-align: center; padding: 44px 0; color: var(--muted); font-size: .9rem; }
@@ -315,6 +338,22 @@
             </table>
           </div>
         </div>
+      </div>
+
+      <!-- Recent News — PubMed -->
+      <div class="card full" id="news-card" style="display:none">
+        <div class="card-title">Recent Publications
+          <a id="news-more-link" href="#" target="_blank" rel="noopener" class="ref-link" style="font-size:.8rem;margin-left:10px">View all on PubMed ↗</a>
+        </div>
+        <ul class="news-list" id="news-list"></ul>
+      </div>
+
+      <!-- Clinical Trials -->
+      <div class="card full" id="trials-card" style="display:none">
+        <div class="card-title">Clinical Trials
+          <a id="trials-more-link" href="#" target="_blank" rel="noopener" class="ref-link" style="font-size:.8rem;margin-left:10px">Search ClinicalTrials.gov ↗</a>
+        </div>
+        <ul class="trials-list" id="trials-list"></ul>
       </div>
 
       <!-- PubChem -->
@@ -634,6 +673,10 @@ function render(d) {
   // Drug Intelligence (ChEMBL)
   renderDrugCard(d.chembl);
 
+  // News + Trials
+  renderNews(d.news, (d.chembl || {}).pubmed_url);
+  renderTrials(d.trials, (d.chembl || {}).trials_url);
+
   // PubChem
   renderPubchem(d.pubchem);
 
@@ -691,15 +734,19 @@ function fmtHL(val, units) {
   return `${val} ${units}`;
 }
 
+function refLink(href, label) {
+  if (!href) return '';
+  return `<a href="${href}" target="_blank" rel="noopener" class="ref-link" title="${label}">↗</a>`;
+}
+
 function renderDrugCard(c) {
   const card = $('drug-card');
   if (!c) { card.style.display = 'none'; return; }
   card.style.display = 'block';
 
-  // Name
   $('drug-name').textContent = c.name || c.chembl_id || 'Unknown compound';
 
-  // Badges
+  // Badges — phase + reference links to all databases
   const badges = $('drug-badges');
   badges.innerHTML = '';
   const addBadge = (text, cls, href) => {
@@ -709,26 +756,27 @@ function renderDrugCard(c) {
     if (href) { el.href = href; el.target = '_blank'; el.rel = 'noopener'; }
     badges.appendChild(el);
   };
-
   if (c.withdrawn) {
     addBadge('Withdrawn / Discontinued', 'dbadge-withdrawn');
   } else {
     const pl = phaseLabel(c.max_phase);
     if (pl) addBadge(pl[0], pl[1]);
   }
-  if (c.chembl_id) addBadge(`ChEMBL: ${c.chembl_id}`, 'dbadge-chembl', c.url);
+  if (c.url)          addBadge(`ChEMBL ${c.chembl_id}`,    'dbadge-chembl',   c.url);
+  if (c.trials_url)   addBadge('ClinicalTrials.gov',        'dbadge-phase1',   c.trials_url);
+  if (c.pubmed_url)   addBadge('PubMed',                    'dbadge-preclin',  c.pubmed_url);
+  if (c.drugbank_url) addBadge('DrugBank',                  'dbadge-approved', c.drugbank_url);
 
   // Synonyms
   const synRow = $('synonyms-row');
   synRow.innerHTML = '';
   (c.synonyms || []).forEach(s => {
     const chip = document.createElement('span');
-    chip.className = 'syn-chip';
-    chip.textContent = s;
+    chip.className = 'syn-chip'; chip.textContent = s;
     synRow.appendChild(chip);
   });
 
-  // Withdrawn box
+  // Withdrawn details
   const wb = $('withdrawn-box');
   if (c.withdrawn) {
     let html = `<div class="withdrawn-box"><div class="wb-title">Discontinuation / Withdrawal Details</div>`;
@@ -736,79 +784,121 @@ function renderDrugCard(c) {
     if (c.withdrawn_class)   html += `<div class="wrow"><span class="wlbl">Class</span><span class="wval">${c.withdrawn_class}</span></div>`;
     if (c.withdrawn_year)    html += `<div class="wrow"><span class="wlbl">Year</span><span class="wval">${c.withdrawn_year}</span></div>`;
     if (c.withdrawn_country) html += `<div class="wrow"><span class="wlbl">Country</span><span class="wval">${c.withdrawn_country}</span></div>`;
-    html += `</div>`;
-    wb.innerHTML = html;
+    wb.innerHTML = html + '</div>';
   } else {
     wb.innerHTML = '';
   }
 
-  // Mechanism of action
-  const moaSec = $('dsec-moa');
-  const moaList = $('moa-list');
+  // Mechanisms of action — with ChEMBL target link
+  const moaSec = $('dsec-moa'), moaList = $('moa-list');
   if (c.mechanisms && c.mechanisms.length) {
     moaSec.style.display = 'block';
     moaList.innerHTML = '';
     c.mechanisms.forEach(m => {
       const li = document.createElement('li');
-      li.innerHTML = `${m.action}${m.type ? `<br><span class="moa-type">${m.type}${m.target ? ' · ' + m.target : ''}</span>` : ''}`;
+      li.innerHTML = `${m.action}${refLink(m.target_url, 'View target on ChEMBL')}
+        ${m.type ? `<br><span class="moa-type">${m.type}${m.target ? ' · ' + m.target : ''}</span>` : ''}`;
       moaList.appendChild(li);
     });
-  } else {
-    moaSec.style.display = 'none';
-  }
+  } else { moaSec.style.display = 'none'; }
 
-  // Indications
-  const indSec  = $('dsec-ind');
-  const indList = $('ind-list');
+  // Indications — with ClinicalTrials link per indication
+  const indSec = $('dsec-ind'), indList = $('ind-list');
   if (c.indications && c.indications.length) {
     indSec.style.display = 'block';
     indList.innerHTML = '';
     c.indications.slice(0, 12).forEach(ind => {
       const li = document.createElement('li');
       const pl = ind.phase != null ? phaseLabel(ind.phase) : null;
-      li.innerHTML = `<span class="ind-name">${ind.name}</span>
+      li.innerHTML = `<span class="ind-name">${ind.name}${refLink(ind.trials_url, 'Search ClinicalTrials.gov')}</span>
         ${pl ? `<span class="ind-phase">${pl[0]}</span>` : ''}`;
       indList.appendChild(li);
     });
-  } else {
-    indSec.style.display = 'none';
-  }
+  } else { indSec.style.display = 'none'; }
 
-  // IC50
-  const ic50Sec  = $('dsec-ic50');
-  const ic50Body = $('ic50-body');
+  // IC50 — with ChEMBL assay + target links
+  const ic50Sec = $('dsec-ic50'), ic50Body = $('ic50-body');
   if (c.ic50 && c.ic50.length) {
     ic50Sec.style.display = 'block';
     ic50Body.innerHTML = '';
     c.ic50.forEach(row => {
       const tr = document.createElement('tr');
       const orgTag = row.organism ? `<span class="org-tag">${row.organism}</span>` : '';
-      tr.innerHTML = `<td>${row.target}</td>
+      const links  = refLink(row.target_url, 'View target on ChEMBL')
+                   + refLink(row.assay_url,  'View assay on ChEMBL');
+      tr.innerHTML = `<td>${row.target}${links}</td>
         <td><span class="ic50-val">${fmtIC50(row.value, row.units)}</span></td>
         <td>${orgTag}</td>`;
       ic50Body.appendChild(tr);
     });
-  } else {
-    ic50Sec.style.display = 'none';
-  }
+  } else { ic50Sec.style.display = 'none'; }
 
-  // Half-life
-  const hlSec  = $('dsec-hl');
-  const hlBody = $('hl-body');
+  // Half-life — with ChEMBL assay link
+  const hlSec = $('dsec-hl'), hlBody = $('hl-body');
   if (c.halflife && c.halflife.length) {
     hlSec.style.display = 'block';
     hlBody.innerHTML = '';
     c.halflife.forEach(row => {
       const tr = document.createElement('tr');
       const orgTag = row.organism ? `<span class="org-tag">${row.organism}</span>` : '';
-      tr.innerHTML = `<td><span class="hl-val">${fmtHL(row.value, row.units)}</span></td>
+      tr.innerHTML = `<td><span class="hl-val">${fmtHL(row.value, row.units)}</span>${refLink(row.assay_url, 'View assay on ChEMBL')}</td>
         <td>${orgTag}</td>
         <td style="color:var(--muted);font-size:.78rem">${row.description || ''}</td>`;
       hlBody.appendChild(tr);
     });
-  } else {
-    hlSec.style.display = 'none';
-  }
+  } else { hlSec.style.display = 'none'; }
+}
+
+function renderNews(articles, pubmedUrl) {
+  const card = $('news-card');
+  if (!articles || !articles.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  if (pubmedUrl) { $('news-more-link').href = pubmedUrl; }
+  const ul = $('news-list');
+  ul.innerHTML = '';
+  articles.forEach(a => {
+    const li = document.createElement('li');
+    li.className = 'news-item';
+    const authors = a.authors && a.authors.length
+      ? a.authors.join(', ') + (a.authors.length >= 3 ? ' et al.' : '')
+      : '';
+    li.innerHTML = `
+      <a class="news-title" href="${a.url}" target="_blank" rel="noopener">${a.title}</a>
+      <div class="news-meta">
+        ${authors ? `<span>${authors}</span>` : ''}
+        ${a.journal ? `<span class="tag">${a.journal}</span>` : ''}
+        ${a.date    ? `<span>${a.date}</span>` : ''}
+        <a href="${a.url}" target="_blank" rel="noopener" class="tag" style="color:var(--accent);text-decoration:none">PMID ${a.pmid} ↗</a>
+      </div>`;
+    ul.appendChild(li);
+  });
+}
+
+function renderTrials(trials, trialsUrl) {
+  const card = $('trials-card');
+  if (!trials || !trials.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  if (trialsUrl) { $('trials-more-link').href = trialsUrl; }
+  const ul = $('trials-list');
+  ul.innerHTML = '';
+  trials.forEach(t => {
+    const li = document.createElement('li');
+    li.className = 'trial-item';
+    const st  = (t.status || '').toLowerCase();
+    const cls = st.includes('recruit') ? 'ts-recruiting'
+              : st.includes('complet') ? 'ts-completed'
+              : st.includes('active')  ? 'ts-active'
+              : 'ts-other';
+    const phases = (t.phases || []).join(', ') || '—';
+    li.innerHTML = `
+      <span class="trial-title">${t.title || t.nct_id}</span>
+      <div class="trial-right">
+        <span class="trial-status ${cls}">${t.status || 'Unknown'}</span>
+        <span style="font-size:.74rem;color:var(--muted)">${phases}${t.start ? ' · Started ' + t.start : ''}</span>
+        <a class="trial-link" href="${t.url}" target="_blank" rel="noopener">${t.nct_id} ↗</a>
+      </div>`;
+    ul.appendChild(li);
+  });
 }
 
 function renderPubchem(pc) {
