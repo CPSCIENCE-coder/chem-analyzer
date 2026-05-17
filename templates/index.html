@@ -257,11 +257,11 @@ function ex(s) { $('smi').value = s; analyze(); }
 
 // ── charge colour map ──────────────────────────────────────────────────────
 const CHARGE_COLORS = {
-  '+5':'#003c8f', '+4':'#0d47a1', '+3':'#1565c0',
-  '+2':'#1e88e5', '+1':'#64b5f6',
-   '0':'#546e7a',
-  '-1':'#ef9a9a', '-2':'#e53935', '-3':'#b71c1c',
-  '-4':'#7f0000', '-5':'#4a0000',
+  '+5':'#ff6d00', '+4':'#ff8f00', '+3':'#ffa000',
+  '+2':'#ffca28', '+1':'#fff176',
+   '0':'#b0bec5',
+  '-1':'#80cbc4', '-2':'#26a69a', '-3':'#00796b',
+  '-4':'#004d40', '-5':'#002d26',
 };
 function chargeKey(z) { return z >= 0 ? '+' + z : '' + z; }
 function chargeColor(z) { return CHARGE_COLORS[chargeKey(z)] || '#78909C'; }
