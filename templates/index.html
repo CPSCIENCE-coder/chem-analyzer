@@ -51,8 +51,14 @@
 
     /* ── Structure card ── */
     .card-struct { display: flex; flex-direction: column; align-items: center; }
-    .card-struct .svg-wrap { background: #fff; border-radius: 8px; padding: 8px; max-width: 100%; }
-    .card-struct .svg-wrap svg { display: block; max-width: 100%; height: auto; }
+    .zoom-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; align-self: flex-end; }
+    .zoom-btn { width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--text); font-size: 1rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s; user-select: none; }
+    .zoom-btn:hover { background: var(--border); }
+    .zoom-label { font-size: .75rem; color: var(--muted); min-width: 38px; text-align: center; font-weight: 600; }
+    .svg-viewport { background: #fff; border-radius: 8px; overflow: hidden; width: 100%; cursor: grab; position: relative; touch-action: none; }
+    .svg-viewport:active { cursor: grabbing; }
+    .svg-inner { display: flex; align-items: center; justify-content: center; transform-origin: 0 0; will-change: transform; }
+    .svg-inner svg { display: block; width: 480px; height: 300px; }
     .highlight-note { margin-top: 10px; }
     .highlight-note .hl-badge { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; background: rgba(255,128,0,.12); border: 1px solid rgba(255,128,0,.4); border-radius: 20px; font-size: .78rem; color: #ff8000; white-space: nowrap; }
     .highlight-note .hl-badge::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ff8000; flex-shrink: 0; }
@@ -225,7 +231,15 @@
       <!-- Structure -->
       <div class="card card-struct full">
         <div class="card-title">Molecular Structure</div>
-        <div class="svg-wrap" id="svg-wrap"></div>
+        <div class="zoom-toolbar">
+          <button class="zoom-btn" onclick="zoomIn()"  title="Zoom in">+</button>
+          <span   class="zoom-label" id="zoom-label">100%</span>
+          <button class="zoom-btn" onclick="zoomOut()" title="Zoom out">−</button>
+          <button class="zoom-btn" onclick="zoomReset()" title="Reset" style="width:auto;padding:0 10px;font-size:.75rem;font-weight:700">Reset</button>
+        </div>
+        <div class="svg-viewport" id="svg-viewport">
+          <div class="svg-inner" id="svg-wrap"></div>
+        </div>
         <div class="highlight-note" id="hl-note" style="display:none">
           <span class="hl-badge" id="hl-text"></span>
         </div>
@@ -391,6 +405,115 @@ const CHARGE_COLORS = {
 };
 function chargeKey(z) { return z >= 0 ? '+' + z : '' + z; }
 function chargeColor(z) { return CHARGE_COLORS[chargeKey(z)] || '#78909C'; }
+
+// ── zoom / pan ─────────────────────────────────────────────────────────────
+const ZOOM_MIN = 0.5, ZOOM_MAX = 8, ZOOM_STEP = 0.25;
+let _z = { scale: 1, tx: 0, ty: 0, dragging: false, startX: 0, startY: 0, startTx: 0, startTy: 0 };
+
+function _applyZoom() {
+  const inner = $('svg-wrap');
+  if (!inner) return;
+  inner.style.transform = `translate(${_z.tx}px, ${_z.ty}px) scale(${_z.scale})`;
+  $('zoom-label').textContent = Math.round(_z.scale * 100) + '%';
+}
+
+function _clampPan() {
+  const vp    = $('svg-viewport');
+  const inner = $('svg-wrap');
+  if (!vp || !inner) return;
+  const vpW = vp.clientWidth, vpH = vp.clientHeight;
+  const cW  = inner.scrollWidth  * _z.scale;
+  const cH  = inner.scrollHeight * _z.scale;
+  const maxTx = Math.max(0, (cW - vpW) / 2);
+  const maxTy = Math.max(0, (cH - vpH) / 2);
+  _z.tx = Math.max(-maxTx, Math.min(maxTx, _z.tx));
+  _z.ty = Math.max(-maxTy, Math.min(maxTy, _z.ty));
+}
+
+function zoomIn()    { _z.scale = Math.min(ZOOM_MAX, parseFloat((_z.scale + ZOOM_STEP).toFixed(2))); _clampPan(); _applyZoom(); }
+function zoomOut()   { _z.scale = Math.max(ZOOM_MIN, parseFloat((_z.scale - ZOOM_STEP).toFixed(2))); _clampPan(); _applyZoom(); }
+function zoomReset() { _z.scale = 1; _z.tx = 0; _z.ty = 0; _applyZoom(); }
+
+function _zoomToward(delta, clientX, clientY) {
+  const vp   = $('svg-viewport');
+  if (!vp) return;
+  const rect  = vp.getBoundingClientRect();
+  const ox    = clientX - rect.left - vp.clientWidth  / 2;
+  const oy    = clientY - rect.top  - vp.clientHeight / 2;
+  const prev  = _z.scale;
+  _z.scale    = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, parseFloat((_z.scale - delta * 0.001).toFixed(3))));
+  const ratio = _z.scale / prev;
+  _z.tx = ox - ratio * (ox - _z.tx);
+  _z.ty = oy - ratio * (oy - _z.ty);
+  _clampPan();
+  _applyZoom();
+}
+
+function _initZoomEvents() {
+  const vp = $('svg-viewport');
+  if (!vp) return;
+
+  // Mouse wheel
+  vp.addEventListener('wheel', e => {
+    e.preventDefault();
+    _zoomToward(e.deltaY, e.clientX, e.clientY);
+  }, { passive: false });
+
+  // Mouse drag
+  vp.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    _z.dragging = true; _z.startX = e.clientX; _z.startY = e.clientY;
+    _z.startTx = _z.tx; _z.startTy = _z.ty;
+    vp.style.cursor = 'grabbing';
+  });
+  window.addEventListener('mousemove', e => {
+    if (!_z.dragging) return;
+    _z.tx = _z.startTx + (e.clientX - _z.startX);
+    _z.ty = _z.startTy + (e.clientY - _z.startY);
+    _clampPan();
+    _applyZoom();
+  });
+  window.addEventListener('mouseup', () => {
+    _z.dragging = false;
+    vp.style.cursor = 'grab';
+  });
+
+  // Touch pinch + drag
+  let _touches = {};
+  let _pinchDist0 = null, _scale0 = 1, _tx0 = 0, _ty0 = 0;
+
+  vp.addEventListener('touchstart', e => {
+    [...e.changedTouches].forEach(t => { _touches[t.identifier] = { x: t.clientX, y: t.clientY }; });
+    if (Object.keys(_touches).length === 2) {
+      const pts = Object.values(_touches);
+      _pinchDist0 = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      _scale0 = _z.scale; _tx0 = _z.tx; _ty0 = _z.ty;
+    } else if (Object.keys(_touches).length === 1) {
+      _z.startX = e.touches[0].clientX; _z.startY = e.touches[0].clientY;
+      _z.startTx = _z.tx; _z.startTy = _z.ty;
+    }
+  }, { passive: true });
+
+  vp.addEventListener('touchmove', e => {
+    e.preventDefault();
+    [...e.changedTouches].forEach(t => { _touches[t.identifier] = { x: t.clientX, y: t.clientY }; });
+    const pts = Object.values(_touches);
+    if (pts.length === 2 && _pinchDist0) {
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      _z.scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, _scale0 * dist / _pinchDist0));
+      _clampPan(); _applyZoom();
+    } else if (pts.length === 1) {
+      _z.tx = _z.startTx + (e.touches[0].clientX - _z.startX);
+      _z.ty = _z.startTy + (e.touches[0].clientY - _z.startY);
+      _clampPan(); _applyZoom();
+    }
+  }, { passive: false });
+
+  vp.addEventListener('touchend', e => {
+    [...e.changedTouches].forEach(t => { delete _touches[t.identifier]; });
+    if (Object.keys(_touches).length < 2) _pinchDist0 = null;
+  }, { passive: true });
+}
 
 // ── speciation math ────────────────────────────────────────────────────────
 // Independent-site convolution. basicPKAs / acidicPKAs are plain number arrays.
@@ -609,10 +732,11 @@ function showErr(msg) {
 }
 
 function render(d) {
-  // Structure SVG
+  // Structure SVG — reset zoom on each new molecule
+  zoomReset();
   $('svg-wrap').innerHTML = d.svg;
   const svgEl = $('svg-wrap').querySelector('svg');
-  if (svgEl) { svgEl.style.maxWidth = '100%'; svgEl.style.height = 'auto'; }
+  if (svgEl) { svgEl.removeAttribute('width'); svgEl.removeAttribute('height'); svgEl.style.width = '480px'; svgEl.style.height = '300px'; }
 
   if (d.pka_functional_group) {
     $('hl-note').style.display = 'flex';
@@ -945,6 +1069,9 @@ window.addEventListener('resize', () => {
     drawChart(ph);
   }
 });
+
+// Initialise zoom once DOM is ready
+_initZoomEvents();
 </script>
 </body>
 </html>
