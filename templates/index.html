@@ -191,6 +191,27 @@
     .trial-link { font-size: .76rem; color: var(--accent); text-decoration: none; }
     .trial-link:hover { text-decoration: underline; }
 
+    /* ── Liposomal Assessment ── */
+    .lipo-header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+    .lipo-verdict { padding: 6px 18px; border-radius: 20px; font-size: .85rem; font-weight: 700; border: 1px solid; white-space: nowrap; }
+    .lipo-green { color: #1a7a52; background: rgba(26,122,82,.1); border-color: rgba(26,122,82,.3); }
+    .lipo-warn  { color: var(--warn); background: rgba(196,125,0,.08); border-color: rgba(196,125,0,.3); }
+    .lipo-error { color: var(--error); background: rgba(211,47,47,.08); border-color: rgba(211,47,47,.3); }
+    .lipo-score { font-size: .8rem; color: var(--muted); }
+    .lipo-method { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(61,111,212,.07); border: 1px solid rgba(61,111,212,.18); border-radius: 8px; margin-bottom: 16px; font-size: .86rem; color: var(--accent); font-weight: 600; }
+    .lipo-method::before { content: "⚗"; font-style: normal; flex-shrink: 0; }
+    .lipo-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media(max-width:660px){ .lipo-cols { grid-template-columns: 1fr; } }
+    .lipo-sec { background: var(--card); border-radius: 8px; padding: 14px 16px; }
+    .lipo-sec-title { font-size: .71rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
+    .lipo-list { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+    .lipo-list li { font-size: .84rem; line-height: 1.45; padding-left: 20px; position: relative; color: var(--text); }
+    .lipo-list li::before { position: absolute; left: 0; top: 1px; font-size: .82rem; }
+    .lipo-rationale li::before { content: "✓"; color: var(--green); font-weight: 700; }
+    .lipo-concerns  li::before { content: "⚠"; color: var(--warn); }
+    .ic50-note { font-size: .76rem; color: var(--muted); margin-top: 8px; padding: 6px 10px; background: var(--card); border-radius: 6px; border-left: 3px solid var(--border); }
+    .org-human { background: rgba(26,122,82,.1); color: #1a7a52; border: 1px solid rgba(26,122,82,.25); border-radius: 4px; font-size: .70rem; padding: 1px 6px; display: inline-block; margin-top: 2px; }
+
     /* spinner */
     .spinner { display: none; text-align: center; padding: 44px 0; color: var(--muted); font-size: .9rem; }
     .spinner::before { content: ""; display: block; width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; margin: 0 auto 14px; animation: spin .7s linear infinite; }
@@ -337,10 +358,19 @@
           </div>
           <!-- IC50 -->
           <div class="dsec full-w" id="dsec-ic50" style="display:none">
-            <div class="dsec-title">Potency — IC₅₀</div>
+            <div class="dsec-title">Target Potency — IC₅₀ <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.78rem;color:var(--muted)">(in vitro / preclinical data)</span></div>
             <table class="dtable">
-              <thead><tr><th>Target</th><th>IC₅₀</th><th>Organism</th></tr></thead>
+              <thead><tr><th>Target</th><th>IC₅₀</th><th>Assay Organism</th></tr></thead>
               <tbody id="ic50-body"></tbody>
+            </table>
+            <div class="ic50-note" id="ic50-note">IC₅₀ values are sourced from in vitro binding or functional assays and preclinical models — organism is specified per entry. For human potency, refer to the clinical dose section below when available.</div>
+          </div>
+          <!-- Clinical Dose -->
+          <div class="dsec full-w" id="dsec-dose" style="display:none">
+            <div class="dsec-title">Clinical / In Vivo Dose</div>
+            <table class="dtable">
+              <thead><tr><th>Dose</th><th>Organism</th><th>Assay / Notes</th></tr></thead>
+              <tbody id="dose-body"></tbody>
             </table>
           </div>
           <!-- Half-life -->
@@ -350,6 +380,26 @@
               <thead><tr><th>t½ Value</th><th>Organism</th><th>Assay / Notes</th></tr></thead>
               <tbody id="hl-body"></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Liposomal Encapsulation Assessment -->
+      <div class="card full" id="lipo-card" style="display:none">
+        <div class="card-title">Liposomal Encapsulation Suitability</div>
+        <div class="lipo-header">
+          <span class="lipo-verdict" id="lipo-verdict">—</span>
+          <span class="lipo-score" id="lipo-score"></span>
+        </div>
+        <div class="lipo-method" id="lipo-method"></div>
+        <div class="lipo-cols">
+          <div class="lipo-sec" id="lipo-rationale-sec" style="display:none">
+            <div class="lipo-sec-title">Supporting Factors</div>
+            <ul class="lipo-list lipo-rationale" id="lipo-rationale"></ul>
+          </div>
+          <div class="lipo-sec" id="lipo-concerns-sec" style="display:none">
+            <div class="lipo-sec-title">Concerns / Limitations</div>
+            <ul class="lipo-list lipo-concerns" id="lipo-concerns"></ul>
           </div>
         </div>
       </div>
@@ -797,6 +847,9 @@ function render(d) {
   // Drug Intelligence (ChEMBL)
   renderDrugCard(d.chembl);
 
+  // Liposomal suitability
+  renderLiposomal(d.liposomal);
+
   // News + Trials
   renderNews(d.news, (d.chembl || {}).pubmed_url);
   renderTrials(d.trials, (d.chembl || {}).trials_url);
@@ -940,14 +993,18 @@ function renderDrugCard(c) {
     });
   } else { indSec.style.display = 'none'; }
 
-  // IC50 — with ChEMBL assay + target links
+  // IC50 — with ChEMBL assay + target links; highlight human organism
   const ic50Sec = $('dsec-ic50'), ic50Body = $('ic50-body');
   if (c.ic50 && c.ic50.length) {
     ic50Sec.style.display = 'block';
     ic50Body.innerHTML = '';
     c.ic50.forEach(row => {
       const tr = document.createElement('tr');
-      const orgTag = row.organism ? `<span class="org-tag">${row.organism}</span>` : '';
+      const isHuman = (row.organism || '').toLowerCase().includes('homo sapiens') ||
+                      (row.organism || '').toLowerCase().includes('human');
+      const orgTag = row.organism
+        ? `<span class="${isHuman ? 'org-human' : 'org-tag'}">${row.organism}</span>`
+        : '<span class="org-tag" style="opacity:.5">not specified</span>';
       const links  = refLink(row.target_url, 'View target on ChEMBL')
                    + refLink(row.assay_url,  'View assay on ChEMBL');
       tr.innerHTML = `<td>${row.target}${links}</td>
@@ -956,6 +1013,25 @@ function renderDrugCard(c) {
       ic50Body.appendChild(tr);
     });
   } else { ic50Sec.style.display = 'none'; }
+
+  // Clinical Dose
+  const doseSec = $('dsec-dose'), doseBody = $('dose-body');
+  if (c.clinical_dose && c.clinical_dose.length) {
+    doseSec.style.display = 'block';
+    doseBody.innerHTML = '';
+    c.clinical_dose.forEach(row => {
+      const tr = document.createElement('tr');
+      const isHuman = (row.organism || '').toLowerCase().includes('homo sapiens') ||
+                      (row.organism || '').toLowerCase().includes('human');
+      const orgTag = row.organism
+        ? `<span class="${isHuman ? 'org-human' : 'org-tag'}">${row.organism}</span>`
+        : '';
+      tr.innerHTML = `<td><span class="hl-val">${row.value} ${row.units}</span>${refLink(row.assay_url, 'View assay on ChEMBL')}</td>
+        <td>${orgTag}</td>
+        <td style="color:var(--muted);font-size:.78rem">${row.description || ''}</td>`;
+      doseBody.appendChild(tr);
+    });
+  } else { doseSec.style.display = 'none'; }
 
   // Half-life — with ChEMBL assay link
   const hlSec = $('dsec-hl'), hlBody = $('hl-body');
@@ -971,6 +1047,31 @@ function renderDrugCard(c) {
       hlBody.appendChild(tr);
     });
   } else { hlSec.style.display = 'none'; }
+}
+
+function renderLiposomal(lipo) {
+  const card = $('lipo-card');
+  if (!lipo) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  const verdictEl = $('lipo-verdict');
+  verdictEl.textContent = lipo.overall;
+  verdictEl.className = 'lipo-verdict lipo-' + (lipo.verdict_color || 'warn');
+
+  $('lipo-score').textContent = `Score: ${lipo.score}/100`;
+  $('lipo-method').textContent = lipo.loading_method;
+
+  const ratSec = $('lipo-rationale-sec'), ratUl = $('lipo-rationale');
+  if (lipo.rationale && lipo.rationale.length) {
+    ratSec.style.display = 'block';
+    ratUl.innerHTML = lipo.rationale.map(t => `<li>${t}</li>`).join('');
+  } else { ratSec.style.display = 'none'; }
+
+  const conSec = $('lipo-concerns-sec'), conUl = $('lipo-concerns');
+  if (lipo.concerns && lipo.concerns.length) {
+    conSec.style.display = 'block';
+    conUl.innerHTML = lipo.concerns.map(t => `<li>${t}</li>`).join('');
+  } else { conSec.style.display = 'none'; }
 }
 
 function renderNews(articles, pubmedUrl) {

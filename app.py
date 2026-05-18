@@ -209,9 +209,10 @@ def get_chembl_data(smiles):
         "hl":    f"{CHEMBL}/activity.json?molecule_chembl_id={cid}&standard_type=Half+life&limit=15",
         "hl2":   f"{CHEMBL}/activity.json?molecule_chembl_id={cid}&standard_type=t1%2F2&limit=15",
         "mech":  f"{CHEMBL}/mechanism.json?molecule_chembl_id={cid}&limit=10",
+        "dose":  f"{CHEMBL}/activity.json?molecule_chembl_id={cid}&standard_type=Dose&limit=15",
     }
     res = {}
-    with ThreadPoolExecutor(max_workers=5) as ex:
+    with ThreadPoolExecutor(max_workers=6) as ex:
         futs = {ex.submit(_cget, u): k for k, u in urls.items()}
         for f in futs:
             res[futs[f]] = f.result()
@@ -280,6 +281,29 @@ def get_chembl_data(smiles):
             })
     hl_list = hl_list[:6]
 
+    # Clinical Dose
+    dose_list = []
+    for act in (res.get("dose") or {}).get("activities", []):
+        val = act.get("standard_value")
+        if not val:
+            continue
+        try:
+            fval = float(val)
+        except ValueError:
+            continue
+        org   = (act.get("target_organism") or act.get("assay_organism") or "").strip()
+        units = (act.get("standard_units") or "mg").strip()
+        desc  = (act.get("assay_description") or "")[:140]
+        assay_id = act.get("assay_chembl_id")
+        dose_list.append({
+            "value":     fval,
+            "units":     units,
+            "organism":  org,
+            "description": desc,
+            "assay_url": f"https://www.ebi.ac.uk/chembl/assay_report_card/{assay_id}/" if assay_id else None,
+        })
+    dose_list = dose_list[:6]
+
     # Mechanisms — include ChEMBL target URL
     mechanisms = []
     for m in (res.get("mech") or {}).get("mechanisms", []):
@@ -315,6 +339,7 @@ def get_chembl_data(smiles):
         "indications":       indications,
         "ic50":              ic50_list,
         "halflife":          hl_list,
+        "clinical_dose":     dose_list,
         "mechanisms":        mechanisms,
         "url":               f"https://www.ebi.ac.uk/chembl/compound_report_card/{cid}/",
         "trials_url":        f"https://clinicaltrials.gov/search?term={urllib.parse.quote(name)}",
@@ -396,6 +421,126 @@ def get_clinical_trials(name, max_results=5):
         return []
 
 
+# ── Liposomal encapsulation suitability ───────────────────────────────────
+
+def evaluate_liposomal_suitability(logp, pred_pka, all_basic, acidic_groups, mw, tpsa, hbd, chembl_data):
+    score      = 0
+    rationale  = []
+    concerns   = []
+    load_mode  = None   # "remote" | "passive"
+
+    # ── logP ──
+    if 1.0 <= logp <= 3.5:
+        score += 30; load_mode = "passive"
+        rationale.append(f"logP {logp:.2f}: Optimal (1–3.5) — good bilayer affinity with sufficient aqueous solubility; high passive encapsulation efficiency expected.")
+    elif 3.5 < logp <= 5.0:
+        score += 22; load_mode = "passive"
+        rationale.append(f"logP {logp:.2f}: Lipophilic (3.5–5) — passive loading feasible; monitor for bilayer integration rather than aqueous-core retention.")
+        concerns.append("Elevated lipophilicity may cause drug to embed in the lipid bilayer membrane, reducing encapsulation efficiency and altering release kinetics.")
+    elif 0.0 <= logp < 1.0:
+        score += 15
+        rationale.append(f"logP {logp:.2f}: Hydrophilic — passive encapsulation efficiency will be low; remote loading is strongly preferred if an ionizable amine is present.")
+    elif logp < 0:
+        score += 5
+        concerns.append(f"logP {logp:.2f}: Highly hydrophilic — passive encapsulation unlikely. Remote pH-gradient loading required (requires ionizable amine with pKa 7.5–10.5).")
+    else:  # > 5
+        score += 10
+        concerns.append(f"logP {logp:.2f}: Highly lipophilic — likely integrates into the lipid bilayer rather than the aqueous core. Consider nanostructured lipid carriers (NLC) or lipid-drug conjugate strategies.")
+
+    # ── Basic pKa ──
+    if pred_pka is not None:
+        if 7.5 <= pred_pka <= 10.5:
+            score += 35; load_mode = "remote"
+            rationale.append(f"Basic pKa {pred_pka:.1f}: Ideal for remote (active) loading — ionizable amine enables transmembrane pH-gradient trapping via ammonium sulfate or citrate buffer method. Encapsulation efficiency typically >80%.")
+        elif 10.5 < pred_pka <= 12.5:
+            score += 20; load_mode = load_mode or "remote"
+            rationale.append(f"Basic pKa {pred_pka:.1f}: Strongly basic amine — remote loading feasible but ionization at endosomal pH (~5.5) may be incomplete, potentially reducing triggered release.")
+            concerns.append(f"pKa {pred_pka:.1f} is very high; the amine may remain unionized at endosomal/lysosomal pH, reducing pH-triggered release efficiency.")
+        elif 5.0 <= pred_pka < 7.5:
+            score += 10
+            concerns.append(f"Basic pKa {pred_pka:.1f}: Weakly basic — partially ionized at physiological pH; transmembrane pH gradient may be insufficient for high encapsulation efficiency via remote loading.")
+        else:
+            score += 5
+            concerns.append(f"Basic pKa {pred_pka:.1f}: Very weak base — remote pH-gradient loading not effective at practical pH differentials.")
+    else:
+        concerns.append("No ionizable basic group detected — remote (pH-gradient) loading not applicable. Passive loading or pH-sensitive lipid formulations (e.g., DOPE/CHEMS) should be considered.")
+
+    # ── Acidic groups ──
+    if acidic_groups:
+        lowest = min(g["pka"] for g in acidic_groups)
+        if lowest < 4.5:
+            concerns.append(f"Acidic group (pKa {lowest:.1f}) — drug is anionic at physiological pH, which may cause electrostatic repulsion with negatively charged DSPE-PEG liposomes. Use cationic lipids (DOTAP) or neutral PEGylated formulations.")
+        else:
+            concerns.append(f"Weakly acidic group (pKa {lowest:.1f}) detected — monitor potential drug–lipid interactions at different pH conditions.")
+
+    # ── MW ──
+    if mw < 500:
+        score += 15
+        rationale.append(f"MW {mw:.0f} Da: Small molecule — excellent candidate for liposomal encapsulation.")
+    elif mw < 1000:
+        score += 8
+        rationale.append(f"MW {mw:.0f} Da: Medium-sized molecule — acceptable for encapsulation; larger liposomes (≥150 nm) may improve loading.")
+    else:
+        score += 2
+        concerns.append(f"MW {mw:.0f} Da: Large molecule — may reduce encapsulation efficiency and diffusion across the lipid bilayer.")
+
+    # ── TPSA ──
+    if tpsa < 60:
+        score += 10
+        rationale.append(f"TPSA {tpsa:.0f} Å²: Low polar surface area — favorable bilayer interaction and membrane partitioning.")
+    elif tpsa < 120:
+        score += 7
+    else:
+        score += 3
+        concerns.append(f"TPSA {tpsa:.0f} Å²: High polar surface area — reduced bilayer permeability; drug may remain poorly associated with lipid membrane.")
+
+    # ── HBD ──
+    if hbd <= 2:
+        score += 10
+        rationale.append(f"H-bond donors ({hbd}): Low count — favorable for membrane partitioning and passive permeation.")
+    elif hbd <= 5:
+        score += 6
+    else:
+        score += 2
+        concerns.append(f"H-bond donors ({hbd}): High count — hydrogen bonding with aqueous phase may reduce membrane affinity and encapsulation.")
+
+    # ── Off-target toxicity from ChEMBL ──
+    if chembl_data:
+        if chembl_data.get("withdrawn"):
+            reason = chembl_data.get("withdrawn_reason") or "unknown reason"
+            tox_kw = ["tox", "cardiac", "hepat", "renal", "adverse", "safety", "carcinogen", "arrhythmia", "QT", "mutagenic"]
+            if any(k.lower() in reason.lower() for k in tox_kw):
+                concerns.append(f"Withdrawn due to systemic toxicity ({reason}) — liposomal encapsulation with targeted delivery could reduce systemic exposure and potentially rehabilitate the compound.")
+            else:
+                concerns.append(f"Drug withdrawn/discontinued ({reason}) — evaluate whether reformulation as a liposome addresses the underlying withdrawal issue.")
+        off = [r for r in (chembl_data.get("ic50") or []) if r.get("value") is not None and r["value"] < 1000]
+        if len(off) > 3:
+            concerns.append(f"{len(off)} off-target activities with IC₅₀ < 1 µM detected — liposomal targeted delivery may improve therapeutic index by limiting systemic exposure.")
+
+    # ── Loading method label ──
+    if load_mode == "remote":
+        loading_label = "Remote loading (pH gradient — ammonium sulfate / citrate buffer method)"
+    elif load_mode == "passive":
+        loading_label = "Passive loading (thin-film hydration or solvent injection)"
+    else:
+        loading_label = "No standard method applicable — evaluate pH-sensitive lipid formulations (DOPE/CHEMS)"
+
+    # ── Verdict ──
+    if   score >= 75: overall, color = "Highly Suitable", "green"
+    elif score >= 55: overall, color = "Suitable",        "green"
+    elif score >= 35: overall, color = "Potentially Suitable", "warn"
+    else:             overall, color = "Limited Suitability",  "error"
+
+    return {
+        "overall":       overall,
+        "verdict_color": color,
+        "score":         score,
+        "loading_method": loading_label,
+        "rationale":     rationale,
+        "concerns":      concerns,
+    }
+
+
 # ── Flask routes ───────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -436,6 +581,8 @@ def analyze():
         pubchem = f_pc.result()
         chembl  = f_che.result()
 
+    liposomal = evaluate_liposomal_suitability(logp, pred_pka, all_basic, acidic_groups, mw, tpsa, hbd, chembl)
+
     # PubMed news + ClinicalTrials in parallel (use compound name if found)
     compound_name = (chembl or {}).get("name") or (pubchem or {}).get("iupac_name") or ""
     with ThreadPoolExecutor(max_workers=2) as ex:
@@ -458,6 +605,7 @@ def analyze():
         "rings":                rings,
         "pubchem":              pubchem,
         "chembl":               chembl,
+        "liposomal":            liposomal,
         "news":                 news,
         "trials":               trials,
     })
