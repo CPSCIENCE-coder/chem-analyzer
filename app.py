@@ -322,11 +322,13 @@ def get_chembl_data(smiles):
         seen.add(target)
         assay_id  = act.get("assay_chembl_id")
         target_id = act.get("target_chembl_id")
+        cell_type = (act.get("assay_cell_type") or "").strip()
+        organism  = (act.get("target_organism") or "").strip()
         ic50_list.append({
             "target":      target,
             "value":       fval,
             "units":       act.get("standard_units", "nM"),
-            "organism":    act.get("target_organism", ""),
+            "organism":    cell_type if cell_type else organism,
             "assay_url":   f"https://www.ebi.ac.uk/chembl/assay_report_card/{assay_id}/" if assay_id else None,
             "target_url":  f"https://www.ebi.ac.uk/chembl/target_report_card/{target_id}/" if target_id else None,
         })

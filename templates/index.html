@@ -1185,10 +1185,13 @@ function renderDrugCard(c) {
     ic50Body.innerHTML = '';
     c.ic50.forEach(row => {
       const tr = document.createElement('tr');
-      const isHuman = (row.organism || '').toLowerCase().includes('homo sapiens') ||
-                      (row.organism || '').toLowerCase().includes('human');
-      const orgTag = row.organism
-        ? `<span class="${isHuman ? 'org-human' : 'org-tag'}">${escHtml(row.organism)}</span>`
+      const org = row.organism || '';
+      const isSpeciesName = org.toLowerCase().includes('homo sapiens') ||
+                            org.toLowerCase().includes('human') ||
+                            org.toLowerCase().includes('mus musculus') ||
+                            org.toLowerCase().includes('rattus');
+      const orgTag = org
+        ? `<span class="${isSpeciesName ? 'org-human' : 'org-tag'}">${escHtml(org)}</span>`
         : '<span class="org-tag" style="opacity:.5">not specified</span>';
       const links  = refLink(row.target_url, 'View target on ChEMBL')
                    + refLink(row.assay_url,  'View assay on ChEMBL');
