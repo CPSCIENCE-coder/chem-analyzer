@@ -3,56 +3,117 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ChemPredict — logP & pKa Analyzer</title>
+  <title>ChemPredict — Drug &amp; Formulation Analyzer</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg:      #f4f6fb;
+      --bg:      #f2f5fb;
       --surface: #ffffff;
-      --card:    #f0f2f8;
-      --border:  #d6daea;
-      --accent:  #3d6fd4;
-      --green:   #1a9e6e;
-      --warn:    #c47d00;
-      --text:    #1a1d2e;
-      --muted:   #5a6280;
-      --error:   #d32f2f;
-      --radius:  12px;
+      --card:    #eef1f8;
+      --border:  #d2d8ea;
+      --accent:  #3660d0;
+      --green:   #17966a;
+      --warn:    #b87200;
+      --text:    #18192b;
+      --muted:   #55607a;
+      --error:   #c62828;
+      --radius:  14px;
     }
-    body { font-family: "Inter", system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 24px 16px 80px; }
+    body { font-family: "Inter", system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 0 0 80px; }
 
-    header { text-align: center; margin-bottom: 36px; }
-    header h1 { font-size: 2rem; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
-    header p  { margin-top: 6px; color: var(--muted); font-size: 0.93rem; }
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #0d1b3e 0%, #1a3a8a 55%, #0e6e82 100%);
+      position: relative;
+      overflow: hidden;
+      padding: 44px 20px 40px;
+      margin-bottom: 36px;
+      text-align: center;
+    }
+    header::before {
+      content: "";
+      position: absolute;
+      width: 480px; height: 480px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(80,160,255,.13) 0%, transparent 70%);
+      top: -140px; left: -80px;
+      pointer-events: none;
+    }
+    header::after {
+      content: "";
+      position: absolute;
+      width: 360px; height: 360px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(20,220,180,.10) 0%, transparent 70%);
+      bottom: -120px; right: -60px;
+      pointer-events: none;
+    }
+    header .container { position: relative; z-index: 1; }
+    header h1 { font-size: 2.3rem; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
+    header h1 span { color: #5ec5f0; }
+    header p  { margin-top: 8px; color: rgba(255,255,255,.72); font-size: 0.92rem; letter-spacing: .01em; }
 
-    .container { max-width: 940px; margin: 0 auto; }
+    .container { max-width: 940px; margin: 0 auto; padding: 0 16px; }
 
-    .input-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px 28px 24px; margin-bottom: 28px; }
+    /* ── Input card ── */
+    .input-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px 28px 24px; margin-bottom: 28px; box-shadow: 0 1px 3px rgba(20,35,90,.07), 0 4px 16px rgba(20,35,90,.07); }
     .input-card label { display: block; font-size: 0.78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 10px; }
     .input-row { display: flex; gap: 10px; }
     .input-wrap { position: relative; flex: 1; }
-    .input-wrap input { width: 100%; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; color: var(--text); font-size: .97rem; font-family: "Inter", system-ui, sans-serif; outline: none; transition: border-color .2s; }
-    .input-wrap input:focus { border-color: var(--accent); }
+    .input-wrap input { width: 100%; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; color: var(--text); font-size: .97rem; font-family: "Inter", system-ui, sans-serif; outline: none; transition: border-color .2s, box-shadow .2s; }
+    .input-wrap input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(54,96,208,.14); }
     .input-wrap input::placeholder { color: var(--muted); font-style: italic; }
-    .ac-dropdown { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.10); z-index: 200; overflow: hidden; }
+    .ac-dropdown { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.10); z-index: 200; overflow: hidden; }
     .ac-item { padding: 10px 16px; font-size: .88rem; cursor: pointer; border-bottom: 1px solid var(--border); color: var(--text); }
     .ac-item:last-child { border-bottom: none; }
     .ac-item:hover, .ac-item.ac-active { background: var(--card); color: var(--accent); }
     .resolved-note { margin-top: 8px; font-size: .8rem; color: var(--green); display: none; }
-    .btn { padding: 12px 28px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: .95rem; font-weight: 600; cursor: pointer; transition: opacity .2s, transform .1s; white-space: nowrap; }
-    .btn:hover { opacity: .88; } .btn:active { transform: scale(.97); } .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn {
+      padding: 12px 28px;
+      background: linear-gradient(135deg, #3d6fd4 0%, #2a55c0 100%);
+      color: #fff; border: none; border-radius: 10px;
+      font-size: .95rem; font-weight: 600; cursor: pointer;
+      transition: opacity .2s, transform .15s, box-shadow .2s;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(54,96,208,.28);
+    }
+    .btn:hover { opacity: .92; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(54,96,208,.38); }
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
     .examples { margin-top: 12px; font-size: .82rem; color: var(--muted); }
     .ep { display: inline-block; margin: 3px 4px 3px 0; padding: 3px 10px; background: var(--card); border: 1px solid var(--border); border-radius: 20px; cursor: pointer; font-family: monospace; font-size: .82rem; color: var(--accent); transition: background .15s; }
     .ep:hover { background: var(--border); }
 
-    .error-box { display: none; background: rgba(239,83,80,.12); border: 1px solid rgba(239,83,80,.35); border-radius: 8px; padding: 12px 16px; color: var(--error); font-size: .9rem; margin-bottom: 20px; }
+    /* ── Error box ── */
+    .error-box { display: none; background: rgba(239,83,80,.12); border: 1px solid rgba(239,83,80,.35); border-radius: 10px; padding: 12px 16px; color: var(--error); font-size: .9rem; margin-bottom: 20px; }
 
+    /* ── Results ── */
     .results { display: none; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
     @media(max-width:660px){ .grid { grid-template-columns: 1fr; } }
 
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; }
-    .card-title { font-size: .75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 16px; }
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+      box-shadow: 0 1px 3px rgba(20,35,90,.07), 0 4px 16px rgba(20,35,90,.07);
+    }
+    .card-title {
+      font-size: .75rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .10em; margin-bottom: 16px;
+      padding-bottom: 11px; border-bottom: 1px solid var(--border);
+      position: relative; padding-left: 12px;
+    }
+    .card-title::before {
+      content: "";
+      position: absolute; left: 0; top: 0; bottom: 0;
+      width: 3px; border-radius: 2px; background: var(--accent);
+    }
     .full { grid-column: 1 / -1; }
 
     /* ── Structure card ── */
@@ -61,7 +122,7 @@
     .zoom-btn { width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--text); font-size: 1rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s; user-select: none; }
     .zoom-btn:hover { background: var(--border); }
     .zoom-label { font-size: .75rem; color: var(--muted); min-width: 38px; text-align: center; font-weight: 600; }
-    .svg-viewport { background: #fff; border-radius: 8px; overflow: hidden; width: 100%; cursor: grab; position: relative; touch-action: none; }
+    .svg-viewport { background: #fff; border-radius: 10px; overflow: hidden; width: 100%; cursor: grab; position: relative; touch-action: none; }
     .svg-viewport:active { cursor: grabbing; }
     .svg-inner { display: flex; align-items: center; justify-content: center; transform-origin: 0 0; will-change: transform; }
     .svg-inner svg { display: block; width: 480px; height: 300px; }
@@ -72,7 +133,18 @@
 
     /* ── Key metrics ── */
     .metrics-row { display: flex; gap: 12px; flex-wrap: wrap; }
-    .metric { flex: 1; min-width: 100px; background: var(--card); border-radius: 10px; padding: 14px 10px 12px; text-align: center; }
+    .metric {
+      flex: 1; min-width: 100px; background: var(--card);
+      border-radius: 10px; padding: 14px 10px 12px; text-align: center;
+      position: relative; overflow: hidden;
+    }
+    .metric::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      border-radius: 10px 10px 0 0;
+    }
+    .m-logd::before { background: var(--accent); }
+    .m-pka::before  { background: var(--green); }
+    .m-mw::before   { background: var(--warn); }
     .metric-val { font-size: 1.9rem; font-weight: 700; line-height: 1; }
     .metric-lbl { font-size: .74rem; color: var(--muted); margin-top: 5px; font-weight: 500; }
     .metric-sub { font-size: .70rem; color: var(--muted); margin-top: 3px; }
@@ -94,8 +166,6 @@
     .glist li:last-child { border-bottom: none; }
     .g-name { color: var(--muted); } .g-pka { font-weight: 700; color: var(--green); }
     .no-groups { color: var(--muted); font-size: .87rem; }
-
-    /* ── pKa interp ── */
 
     /* ── Speciation diagram ── */
     .spec-card { padding: 22px 24px 20px; }
@@ -121,7 +191,7 @@
     .pf-lbl { color: var(--muted); font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
     .pf-val { font-weight: 600; word-break: break-all; }
     .pka-exp { margin-top: 12px; }
-    .pka-badge { display: inline-block; background: rgba(62,207,142,.12); border: 1px solid rgba(62,207,142,.3); color: var(--green); border-radius: 6px; padding: 3px 10px; font-size: .82rem; margin: 2px 4px 2px 0; font-family: monospace; }
+    .pka-badge { display: inline-block; background: rgba(62,207,142,.12); border: 1px solid rgba(62,207,142,.3); color: var(--green); border-radius: 8px; padding: 3px 10px; font-size: .82rem; margin: 2px 4px 2px 0; font-family: monospace; }
     .db-links { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
     .db-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; text-decoration: none; font-size: .82rem; font-weight: 600; border: 1px solid; transition: opacity .2s; }
     .db-link:hover { opacity: .75; }
@@ -153,7 +223,7 @@
     .wval { color: var(--text); font-weight: 600; }
     .drug-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     @media(max-width:680px){ .drug-sections { grid-template-columns: 1fr; } }
-    .dsec { background: var(--card); border-radius: 8px; padding: 14px 16px; }
+    .dsec { background: var(--card); border-radius: 10px; padding: 14px 16px; }
     .dsec-title { font-size: .72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
     .dsec.full-w { grid-column: 1 / -1; }
     .ind-list { list-style: none; }
@@ -169,6 +239,7 @@
     .dtable th { text-align: left; font-size: .71rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding: 0 6px 7px 0; border-bottom: 2px solid var(--border); }
     .dtable td { padding: 6px 6px 6px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
     .dtable tr:last-child td { border-bottom: none; }
+    .dtable tbody tr:hover td { background: var(--card); }
     .ic50-val { font-weight: 700; color: var(--accent); white-space: nowrap; }
     .hl-val   { font-weight: 700; color: var(--green);  white-space: nowrap; }
     .org-tag  { display: inline-block; font-size: .70rem; padding: 1px 6px; border-radius: 4px; background: var(--border); color: var(--muted); margin-top: 2px; }
@@ -178,7 +249,8 @@
 
     /* ── News ── */
     .news-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
-    .news-item { padding: 14px 16px; background: var(--card); border-radius: 8px; border-left: 3px solid var(--accent); }
+    .news-item { padding: 14px 16px; background: var(--card); border-radius: 10px; border-left: 3px solid var(--accent); transition: box-shadow .18s, transform .18s; }
+    .news-item:hover { box-shadow: 0 4px 18px rgba(20,35,90,.10); transform: translateY(-1px); }
     .news-title { font-size: .9rem; font-weight: 600; color: var(--text); text-decoration: none; display: block; margin-bottom: 5px; line-height: 1.4; }
     .news-title:hover { color: var(--accent); }
     .news-meta  { font-size: .76rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
@@ -186,7 +258,8 @@
 
     /* ── Trials ── */
     .trials-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
-    .trial-item  { padding: 12px 16px; background: var(--card); border-radius: 8px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+    .trial-item  { padding: 12px 16px; background: var(--card); border-radius: 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; transition: box-shadow .18s, transform .18s; }
+    .trial-item:hover { box-shadow: 0 4px 18px rgba(20,35,90,.10); transform: translateY(-1px); }
     .trial-title { font-size: .86rem; font-weight: 600; color: var(--text); flex: 1; }
     .trial-right { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
     .trial-status { font-size: .73rem; font-weight: 700; padding: 2px 9px; border-radius: 10px; white-space: nowrap; }
@@ -204,11 +277,11 @@
     .lipo-warn  { color: var(--warn); background: rgba(196,125,0,.08); border-color: rgba(196,125,0,.3); }
     .lipo-error { color: var(--error); background: rgba(211,47,47,.08); border-color: rgba(211,47,47,.3); }
     .lipo-score { font-size: .8rem; color: var(--muted); }
-    .lipo-method { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(61,111,212,.07); border: 1px solid rgba(61,111,212,.18); border-radius: 8px; margin-bottom: 16px; font-size: .86rem; color: var(--accent); font-weight: 600; }
+    .lipo-method { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(54,96,208,.07); border: 1px solid rgba(54,96,208,.18); border-radius: 10px; margin-bottom: 16px; font-size: .86rem; color: var(--accent); font-weight: 600; }
     .lipo-method::before { content: "⚗"; font-style: normal; flex-shrink: 0; }
     .lipo-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     @media(max-width:660px){ .lipo-cols { grid-template-columns: 1fr; } }
-    .lipo-sec { background: var(--card); border-radius: 8px; padding: 14px 16px; }
+    .lipo-sec { background: var(--card); border-radius: 10px; padding: 14px 16px; }
     .lipo-sec-title { font-size: .71rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
     .lipo-list { list-style: none; display: flex; flex-direction: column; gap: 7px; }
     .lipo-list li { font-size: .84rem; line-height: 1.45; padding-left: 20px; position: relative; color: var(--text); }
@@ -218,19 +291,31 @@
     .ic50-note { font-size: .76rem; color: var(--muted); margin-top: 8px; padding: 6px 10px; background: var(--card); border-radius: 6px; border-left: 3px solid var(--border); }
     .org-human { background: rgba(26,122,82,.1); color: #1a7a52; border: 1px solid rgba(26,122,82,.25); border-radius: 4px; font-size: .70rem; padding: 1px 6px; display: inline-block; margin-top: 2px; }
 
-    /* spinner */
-    .spinner { display: none; text-align: center; padding: 44px 0; color: var(--muted); font-size: .9rem; }
-    .spinner::before { content: ""; display: block; width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; margin: 0 auto 14px; animation: spin .7s linear infinite; }
+    /* ── Spinner ── */
+    .spinner { display: none; text-align: center; padding: 56px 0; color: var(--muted); font-size: .9rem; display: none; flex-direction: column; align-items: center; gap: 0; }
+    .spinner::before { content: ""; display: block; width: 38px; height: 38px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; margin: 0 auto 14px; animation: spin .7s linear infinite; }
+    .spin-sub { display: block; margin-top: 5px; font-size: .78rem; color: var(--muted); opacity: .8; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Mobile tweaks ── */
+    @media(max-width:520px) {
+      header h1 { font-size: 1.65rem; }
+      .input-card { padding: 20px 16px 18px; }
+      .input-row { flex-direction: column; }
+      .btn { width: 100%; }
+      .card { padding: 18px 16px; }
+    }
   </style>
 </head>
 <body>
-<div class="container">
-  <header>
-    <h1>ChemPredict</h1>
-    <p>Enter a SMILES code to evaluate logD₇.₄, base pKa, and charge microspeciation — powered by RDKit &amp; PubChem</p>
-  </header>
+<header>
+  <div class="container">
+    <h1>Chem<span>Predict</span></h1>
+    <p>logD₇.₄ · pKa · Microspeciation · Drug Intelligence · Liposomal Suitability</p>
+  </div>
+</header>
 
+<div class="container">
   <div class="input-card">
     <label for="smi">Compound Input — SMILES, common name, or IUPAC name</label>
     <div class="input-row">
@@ -253,8 +338,8 @@
     </div>
   </div>
 
-  <div class="error-box" id="err"></div>
-  <div class="spinner"  id="spin">Analyzing compound and querying PubChem…</div>
+  <div class="error-box" id="err" role="alert"></div>
+  <div class="spinner" id="spin"><span>Analyzing compound…</span><span class="spin-sub">Querying PubChem · ChEMBL · ClinicalTrials.gov</span></div>
 
   <div class="results" id="res">
     <div class="grid">
@@ -281,17 +366,17 @@
       <div class="card">
         <div class="card-title">Key Properties</div>
         <div class="metrics-row">
-          <div class="metric">
+          <div class="metric m-logd">
             <div class="metric-val c-logp" id="v-logd">—</div>
             <div class="metric-lbl">logD<sub>7.4</sub></div>
             <div class="metric-sub" id="v-logd-sub">ionization-corrected</div>
           </div>
-          <div class="metric">
+          <div class="metric m-pka">
             <div class="metric-val c-pka"  id="v-pka">—</div>
             <div class="metric-lbl">Base pKa</div>
             <div class="metric-sub" id="v-pka-grp">predicted</div>
           </div>
-          <div class="metric">
+          <div class="metric m-mw">
             <div class="metric-val c-mw"   id="v-mw">—</div>
             <div class="metric-lbl">MW (Da)</div>
             <div class="metric-sub">exact mass</div>
@@ -450,6 +535,10 @@
 // ── helpers ────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // ── autocomplete ───────────────────────────────────────────────────────────
 let _acTimer = null, _acIndex = -1, _acItems = [];
 
@@ -462,9 +551,14 @@ function _renderAC(names) {
   const dd = $('ac-drop');
   if (!names.length) { dd.style.display = 'none'; return; }
   _acItems = names;
-  dd.innerHTML = names.map((n, i) =>
-    `<div class="ac-item" data-i="${i}" onmousedown="_selectAC('${n.replace(/'/g,"\\'")}')">${n}</div>`
-  ).join('');
+  dd.innerHTML = '';
+  names.forEach((n) => {
+    const div = document.createElement('div');
+    div.className = 'ac-item';
+    div.textContent = n;
+    div.addEventListener('mousedown', () => _selectAC(n));
+    dd.appendChild(div);
+  });
   dd.style.display = 'block';
 }
 
@@ -599,14 +693,14 @@ function _initZoomEvents() {
 
   // Touch pinch + drag
   let _touches = {};
-  let _pinchDist0 = null, _scale0 = 1, _tx0 = 0, _ty0 = 0;
+  let _pinchDist0 = null, _scale0 = 1;
 
   vp.addEventListener('touchstart', e => {
     [...e.changedTouches].forEach(t => { _touches[t.identifier] = { x: t.clientX, y: t.clientY }; });
     if (Object.keys(_touches).length === 2) {
       const pts = Object.values(_touches);
       _pinchDist0 = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-      _scale0 = _z.scale; _tx0 = _z.tx; _ty0 = _z.ty;
+      _scale0 = _z.scale;
     } else if (Object.keys(_touches).length === 1) {
       _z.startX = e.touches[0].clientX; _z.startY = e.touches[0].clientY;
       _z.startTx = _z.tx; _z.startTy = _z.ty;
@@ -697,7 +791,7 @@ function drawChart(currentPH) {
   const iW = cW - pl - pr, iH = cH - pt - pb;
 
   // background
-  ctx.fillStyle = '#f0f2f8';
+  ctx.fillStyle = '#eef1f8';
   ctx.fillRect(0, 0, cW, cH);
 
   const { phVals, dists, charges } = _spec;
@@ -826,7 +920,7 @@ async function analyze() {
   if (!smiles) return;
   $('err').style.display  = 'none';
   $('res').style.display  = 'none';
-  $('spin').style.display = 'block';
+  $('spin').style.display = 'flex';
   $('btn').disabled       = true;
 
   try {
@@ -839,7 +933,7 @@ async function analyze() {
     if (!r.ok || d.error) { showErr(d.error || 'Analysis failed.'); return; }
     render(d);
   } catch (e) {
-    showErr('Network error — is the server running at localhost:5050?');
+    showErr('Network error — unable to reach the analysis server. Please try again.');
   } finally {
     $('spin').style.display = 'none';
     $('btn').disabled       = false;
@@ -938,6 +1032,9 @@ function render(d) {
   renderPubchem(d.pubchem);
 
   $('res').style.display = 'block';
+  $('res').style.animation = 'none';
+  void $('res').offsetWidth;   // force reflow
+  $('res').style.animation = 'fadeUp .4s ease both';
   $('res').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -947,12 +1044,12 @@ function renderGroupList(elId, groups, colorVar, emptyMsg) {
   if (groups && groups.length) {
     groups.forEach(g => {
       const li = document.createElement('li');
-      li.innerHTML = `<span class="g-name">${g.group}</span>
+      li.innerHTML = `<span class="g-name">${escHtml(g.group)}</span>
         <span class="g-pka" style="color:var(--${colorVar})">pKa ${g.pka.toFixed(1)}</span>`;
       ul.appendChild(li);
     });
   } else {
-    ul.innerHTML = `<li class="no-groups">${emptyMsg}</li>`;
+    ul.innerHTML = `<li class="no-groups">${escHtml(emptyMsg)}</li>`;
   }
 }
 
@@ -993,7 +1090,7 @@ function fmtHL(val, units) {
 
 function refLink(href, label) {
   if (!href) return '';
-  return `<a href="${href}" target="_blank" rel="noopener" class="ref-link" title="${label}">↗</a>`;
+  return `<a href="${escHtml(href)}" target="_blank" rel="noopener" class="ref-link" title="${escHtml(label)}">↗</a>`;
 }
 
 function renderDrugCard(c) {
@@ -1037,10 +1134,10 @@ function renderDrugCard(c) {
   const wb = $('withdrawn-box');
   if (c.withdrawn) {
     let html = `<div class="withdrawn-box"><div class="wb-title">Discontinuation / Withdrawal Details</div>`;
-    if (c.withdrawn_reason)  html += `<div class="wrow"><span class="wlbl">Reason</span><span class="wval">${c.withdrawn_reason}</span></div>`;
-    if (c.withdrawn_class)   html += `<div class="wrow"><span class="wlbl">Class</span><span class="wval">${c.withdrawn_class}</span></div>`;
-    if (c.withdrawn_year)    html += `<div class="wrow"><span class="wlbl">Year</span><span class="wval">${c.withdrawn_year}</span></div>`;
-    if (c.withdrawn_country) html += `<div class="wrow"><span class="wlbl">Country</span><span class="wval">${c.withdrawn_country}</span></div>`;
+    if (c.withdrawn_reason)  html += `<div class="wrow"><span class="wlbl">Reason</span><span class="wval">${escHtml(c.withdrawn_reason)}</span></div>`;
+    if (c.withdrawn_class)   html += `<div class="wrow"><span class="wlbl">Class</span><span class="wval">${escHtml(c.withdrawn_class)}</span></div>`;
+    if (c.withdrawn_year)    html += `<div class="wrow"><span class="wlbl">Year</span><span class="wval">${escHtml(c.withdrawn_year)}</span></div>`;
+    if (c.withdrawn_country) html += `<div class="wrow"><span class="wlbl">Country</span><span class="wval">${escHtml(c.withdrawn_country)}</span></div>`;
     wb.innerHTML = html + '</div>';
   } else {
     wb.innerHTML = '';
@@ -1053,8 +1150,8 @@ function renderDrugCard(c) {
     moaList.innerHTML = '';
     c.mechanisms.forEach(m => {
       const li = document.createElement('li');
-      li.innerHTML = `${m.action}${refLink(m.target_url, 'View target on ChEMBL')}
-        ${m.type ? `<br><span class="moa-type">${m.type}${m.target ? ' · ' + m.target : ''}</span>` : ''}`;
+      li.innerHTML = `${escHtml(m.action)}${refLink(m.target_url, 'View target on ChEMBL')}
+        ${m.type ? `<br><span class="moa-type">${escHtml(m.type)}${m.target ? ' · ' + escHtml(m.target) : ''}</span>` : ''}`;
       moaList.appendChild(li);
     });
   } else { moaSec.style.display = 'none'; }
@@ -1067,7 +1164,7 @@ function renderDrugCard(c) {
     c.indications.slice(0, 12).forEach(ind => {
       const li = document.createElement('li');
       const pl = ind.phase != null ? phaseLabel(ind.phase) : null;
-      li.innerHTML = `<span class="ind-name">${ind.name}${refLink(ind.trials_url, 'Search ClinicalTrials.gov')}</span>
+      li.innerHTML = `<span class="ind-name">${escHtml(ind.name)}${refLink(ind.trials_url, 'Search ClinicalTrials.gov')}</span>
         ${pl ? `<span class="ind-phase">${pl[0]}</span>` : ''}`;
       indList.appendChild(li);
     });
@@ -1083,11 +1180,11 @@ function renderDrugCard(c) {
       const isHuman = (row.organism || '').toLowerCase().includes('homo sapiens') ||
                       (row.organism || '').toLowerCase().includes('human');
       const orgTag = row.organism
-        ? `<span class="${isHuman ? 'org-human' : 'org-tag'}">${row.organism}</span>`
+        ? `<span class="${isHuman ? 'org-human' : 'org-tag'}">${escHtml(row.organism)}</span>`
         : '<span class="org-tag" style="opacity:.5">not specified</span>';
       const links  = refLink(row.target_url, 'View target on ChEMBL')
                    + refLink(row.assay_url,  'View assay on ChEMBL');
-      tr.innerHTML = `<td>${row.target}${links}</td>
+      tr.innerHTML = `<td>${escHtml(row.target)}${links}</td>
         <td><span class="ic50-val">${fmtIC50(row.value, row.units)}</span></td>
         <td>${orgTag}</td>`;
       ic50Body.appendChild(tr);
@@ -1104,11 +1201,11 @@ function renderDrugCard(c) {
       const isHuman = (row.organism || '').toLowerCase().includes('homo sapiens') ||
                       (row.organism || '').toLowerCase().includes('human');
       const orgTag = row.organism
-        ? `<span class="${isHuman ? 'org-human' : 'org-tag'}">${row.organism}</span>`
+        ? `<span class="${isHuman ? 'org-human' : 'org-tag'}">${escHtml(row.organism)}</span>`
         : '';
-      tr.innerHTML = `<td><span class="hl-val">${row.value} ${row.units}</span>${refLink(row.assay_url, 'View assay on ChEMBL')}</td>
+      tr.innerHTML = `<td><span class="hl-val">${escHtml(row.value)} ${escHtml(row.units)}</span>${refLink(row.assay_url, 'View assay on ChEMBL')}</td>
         <td>${orgTag}</td>
-        <td style="color:var(--muted);font-size:.78rem">${row.description || ''}</td>`;
+        <td style="color:var(--muted);font-size:.78rem">${escHtml(row.description || '')}</td>`;
       doseBody.appendChild(tr);
     });
   } else { doseSec.style.display = 'none'; }
@@ -1120,10 +1217,10 @@ function renderDrugCard(c) {
     hlBody.innerHTML = '';
     c.halflife.forEach(row => {
       const tr = document.createElement('tr');
-      const orgTag = row.organism ? `<span class="org-tag">${row.organism}</span>` : '';
+      const orgTag = row.organism ? `<span class="org-tag">${escHtml(row.organism)}</span>` : '';
       tr.innerHTML = `<td><span class="hl-val">${fmtHL(row.value, row.units)}</span>${refLink(row.assay_url, 'View assay on ChEMBL')}</td>
         <td>${orgTag}</td>
-        <td style="color:var(--muted);font-size:.78rem">${row.description || ''}</td>`;
+        <td style="color:var(--muted);font-size:.78rem">${escHtml(row.description || '')}</td>`;
       hlBody.appendChild(tr);
     });
   } else { hlSec.style.display = 'none'; }
@@ -1144,13 +1241,13 @@ function renderLiposomal(lipo) {
   const ratSec = $('lipo-rationale-sec'), ratUl = $('lipo-rationale');
   if (lipo.rationale && lipo.rationale.length) {
     ratSec.style.display = 'block';
-    ratUl.innerHTML = lipo.rationale.map(t => `<li>${t}</li>`).join('');
+    ratUl.innerHTML = lipo.rationale.map(t => `<li>${escHtml(t)}</li>`).join('');
   } else { ratSec.style.display = 'none'; }
 
   const conSec = $('lipo-concerns-sec'), conUl = $('lipo-concerns');
   if (lipo.concerns && lipo.concerns.length) {
     conSec.style.display = 'block';
-    conUl.innerHTML = lipo.concerns.map(t => `<li>${t}</li>`).join('');
+    conUl.innerHTML = lipo.concerns.map(t => `<li>${escHtml(t)}</li>`).join('');
   } else { conSec.style.display = 'none'; }
 }
 
@@ -1168,12 +1265,12 @@ function renderNews(articles, pubmedUrl) {
       ? a.authors.join(', ') + (a.authors.length >= 3 ? ' et al.' : '')
       : '';
     li.innerHTML = `
-      <a class="news-title" href="${a.url}" target="_blank" rel="noopener">${a.title}</a>
+      <a class="news-title" href="${escHtml(a.url)}" target="_blank" rel="noopener">${escHtml(a.title)}</a>
       <div class="news-meta">
-        ${authors ? `<span>${authors}</span>` : ''}
-        ${a.journal ? `<span class="tag">${a.journal}</span>` : ''}
-        ${a.date    ? `<span>${a.date}</span>` : ''}
-        <a href="${a.url}" target="_blank" rel="noopener" class="tag" style="color:var(--accent);text-decoration:none">PMID ${a.pmid} ↗</a>
+        ${authors ? `<span>${escHtml(authors)}</span>` : ''}
+        ${a.journal ? `<span class="tag">${escHtml(a.journal)}</span>` : ''}
+        ${a.date    ? `<span>${escHtml(a.date)}</span>` : ''}
+        <a href="${escHtml(a.url)}" target="_blank" rel="noopener" class="tag" style="color:var(--accent);text-decoration:none">PMID ${escHtml(String(a.pmid))} ↗</a>
       </div>`;
     ul.appendChild(li);
   });
@@ -1196,11 +1293,11 @@ function renderTrials(trials, trialsUrl) {
               : 'ts-other';
     const phases = (t.phases || []).join(', ') || '—';
     li.innerHTML = `
-      <span class="trial-title">${t.title || t.nct_id}</span>
+      <span class="trial-title">${escHtml(t.title || t.nct_id)}</span>
       <div class="trial-right">
-        <span class="trial-status ${cls}">${t.status || 'Unknown'}</span>
-        <span style="font-size:.74rem;color:var(--muted)">${phases}${t.start ? ' · Started ' + t.start : ''}</span>
-        <a class="trial-link" href="${t.url}" target="_blank" rel="noopener">${t.nct_id} ↗</a>
+        <span class="trial-status ${cls}">${escHtml(t.status || 'Unknown')}</span>
+        <span style="font-size:.74rem;color:var(--muted)">${escHtml(phases)}${t.start ? ' · Started ' + escHtml(t.start) : ''}</span>
+        <a class="trial-link" href="${escHtml(t.url)}" target="_blank" rel="noopener">${escHtml(t.nct_id)} ↗</a>
       </div>`;
     ul.appendChild(li);
   });
@@ -1218,7 +1315,7 @@ function renderPubchem(pc) {
     if (!v) return;
     const d = document.createElement('div');
     d.className = 'pf';
-    d.innerHTML = `<div class="pf-lbl">${l}</div><div class="pf-val">${v}</div>`;
+    d.innerHTML = `<div class="pf-lbl">${escHtml(l)}</div><div class="pf-val">${escHtml(String(v))}</div>`;
     inner.appendChild(d);
   });
 
@@ -1238,7 +1335,7 @@ function renderPubchem(pc) {
 
   const encoded = encodeURIComponent($('smi').value.trim());
   $('db-links').innerHTML = `
-    <a class="db-link db-pc"  href="${pc.url}"  target="_blank" rel="noopener">🔗 PubChem CID ${pc.cid}</a>
+    <a class="db-link db-pc"  href="${escHtml(pc.url)}"  target="_blank" rel="noopener">🔗 PubChem CID ${escHtml(String(pc.cid))}</a>
     <a class="db-link db-ch"  href="https://www.ebi.ac.uk/chembl/g/#search_results/compounds/query=${encoded}" target="_blank" rel="noopener">🔗 ChEMBL search</a>
     <a class="db-link db-db"  href="https://go.drugbank.com/structures/search/small_molecule_drugs/structure#results" target="_blank" rel="noopener">🔗 DrugBank</a>`;
 }
