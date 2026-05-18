@@ -660,6 +660,60 @@ def evaluate_liposomal_suitability(logd, pred_pka, all_basic, acidic_groups, mw,
                     "Zhao & Szoka, Nat. Rev. Drug Discov. 1 (2021)")
         })
 
+    # ── Method 5: ZoneOne remote loading — co-solvent + gradient ────────────
+    # Hayes, Noble & Szoka Jr. (US20140220110A1, ZoneOne Pharma, 2014).
+    # Drug dissolved in ≤10 % v/v organic co-solvent (DMSO, acetonitrile, NMP,
+    # THF, DMF) then injected into pre-formed liposomes bearing an internal
+    # transmembrane gradient (250 mM ammonium sulfate or calcium acetate).
+    # Co-solvent enables bilayer permeation of drugs too poorly soluble for
+    # standard aqueous remote loading; gradient traps ionizable drug as
+    # insoluble salt at internal pH ~4.  Demonstrated for carfilzomib,
+    # deferasirox, and camptothecin analogs.
+    is_ionizable_for_gradient = pred_pka is not None and 5.0 <= pred_pka <= 10.5
+    sparingly_soluble = logd > 2.5   # logD >2.5 proxies for poor aqueous solubility
+
+    if sparingly_soluble and is_ionizable_for_gradient:
+        zone_suit, zone_col = "Recommended", "green"
+        zone_note = (
+            f"logD₇.₄ {logd:.2f}, pKa {pred_pka:.1f}: sparingly water-soluble "
+            f"ionizable drug — prime candidate for ZoneOne co-solvent remote loading. "
+            f"Dissolve in ≤10% v/v DMSO/acetonitrile/NMP and inject into pre-formed "
+            f"liposomes with 250 mM ammonium sulfate or calcium acetate internal "
+            f"gradient. Co-solvent overcomes aqueous insolubility barrier; protonated "
+            f"drug is trapped as an insoluble ion-pair at internal pH ~4. Demonstrated "
+            f"with carfilzomib, deferasirox, and camptothecin analogues."
+        )
+    elif logd > 3.5:
+        zone_suit, zone_col = "Feasible", "warn"
+        zone_note = (
+            f"logD₇.₄ {logd:.2f}: highly lipophilic compound without a suitable pKa "
+            f"for gradient trapping. ZoneOne co-solvent injection can still drive "
+            f"bilayer intercalation, but without ionization-based trapping EE will "
+            f"be lower. Optimize drug-to-lipid ratio (≤0.2 mol/mol) and use "
+            f"≤10% v/v co-solvent."
+        )
+    elif 1.5 < logd <= 2.5 and is_ionizable_for_gradient:
+        zone_suit, zone_col = "Feasible", "warn"
+        zone_note = (
+            f"logD₇.₄ {logd:.2f}, pKa {pred_pka:.1f}: moderate lipophilicity and "
+            f"ionizable. ZoneOne co-solvent loading is applicable when aqueous "
+            f"solubility still limits standard remote loading protocols; adding "
+            f"5–10% v/v co-solvent to an ammonium sulfate loading step can improve "
+            f"EE for marginally soluble drugs."
+        )
+    else:
+        zone_suit = zone_col = zone_note = None
+
+    if zone_suit:
+        methods.append({
+            "method": "Remote — ZoneOne co-solvent + gradient (Hayes, Noble & Szoka Jr.)",
+            "suitability": zone_suit,
+            "color": zone_col,
+            "notes": zone_note,
+            "ref": ("Hayes, Noble & Szoka Jr., US20140220110A1 (ZoneOne Pharma, 2014); "
+                    "Szoka & Papahadjopoulos, Proc. Natl. Acad. Sci. USA 75 (1978) 4194–4198")
+        })
+
     # ── Physicochemical scoring (overall suitability) ────────────────────────
     if 1.0 <= logd <= 3.5:
         score += 30
