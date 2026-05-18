@@ -8,6 +8,7 @@ from rdkit.Chem.inchi import MolToInchiKey
 from concurrent.futures import ThreadPoolExecutor
 import requests
 import urllib.parse
+import math
 
 app = Flask(__name__)
 
@@ -70,6 +71,19 @@ def mol_to_svg(mol, highlight_atoms=None, size=(480, 300)):
 
 def calculate_logp(mol):
     return round(MolLogP(mol), 2)
+
+
+def calculate_logd(logp, all_basic_groups, acidic_groups, ph=7.4):
+    """LogD at given pH: logP corrected for ionization of all predicted sites.
+    Assumes only the fully neutral species partitions into octanol."""
+    log_f = 0.0
+    for g in (all_basic_groups or []):
+        # basic site: neutral fraction = 1 / (1 + 10^(pKa - pH))
+        log_f -= math.log10(1 + 10 ** (g["pka"] - ph))
+    for g in (acidic_groups or []):
+        # acidic site: neutral fraction = 1 / (1 + 10^(pH - pKa))
+        log_f -= math.log10(1 + 10 ** (ph - g["pka"]))
+    return round(logp + log_f, 2)
 
 
 def predict_base_pka(mol):
@@ -423,29 +437,29 @@ def get_clinical_trials(name, max_results=5):
 
 # ── Liposomal encapsulation suitability ───────────────────────────────────
 
-def evaluate_liposomal_suitability(logp, pred_pka, all_basic, acidic_groups, mw, tpsa, hbd, chembl_data):
+def evaluate_liposomal_suitability(logd, pred_pka, all_basic, acidic_groups, mw, tpsa, hbd, chembl_data):
     score      = 0
     rationale  = []
     concerns   = []
     load_mode  = None   # "remote" | "passive"
 
-    # ── logP ──
-    if 1.0 <= logp <= 3.5:
+    # ── logD7.4 ──
+    if 1.0 <= logd <= 3.5:
         score += 30; load_mode = "passive"
-        rationale.append(f"logP {logp:.2f}: Optimal (1–3.5) — good bilayer affinity with sufficient aqueous solubility; high passive encapsulation efficiency expected.")
-    elif 3.5 < logp <= 5.0:
+        rationale.append(f"logD₇.₄ {logd:.2f}: Optimal (1–3.5) — good bilayer affinity with sufficient aqueous solubility at physiological pH; high passive encapsulation efficiency expected.")
+    elif 3.5 < logd <= 5.0:
         score += 22; load_mode = "passive"
-        rationale.append(f"logP {logp:.2f}: Lipophilic (3.5–5) — passive loading feasible; monitor for bilayer integration rather than aqueous-core retention.")
-        concerns.append("Elevated lipophilicity may cause drug to embed in the lipid bilayer membrane, reducing encapsulation efficiency and altering release kinetics.")
-    elif 0.0 <= logp < 1.0:
+        rationale.append(f"logD₇.₄ {logd:.2f}: Lipophilic (3.5–5) — passive loading feasible; monitor for bilayer integration rather than aqueous-core retention.")
+        concerns.append("Elevated logD₇.₄ may cause drug to embed in the lipid bilayer membrane, reducing encapsulation efficiency and altering release kinetics.")
+    elif 0.0 <= logd < 1.0:
         score += 15
-        rationale.append(f"logP {logp:.2f}: Hydrophilic — passive encapsulation efficiency will be low; remote loading is strongly preferred if an ionizable amine is present.")
-    elif logp < 0:
+        rationale.append(f"logD₇.₄ {logd:.2f}: Hydrophilic at pH 7.4 — passive encapsulation efficiency will be low; remote loading is strongly preferred if an ionizable amine is present.")
+    elif logd < 0:
         score += 5
-        concerns.append(f"logP {logp:.2f}: Highly hydrophilic — passive encapsulation unlikely. Remote pH-gradient loading required (requires ionizable amine with pKa 7.5–10.5).")
+        concerns.append(f"logD₇.₄ {logd:.2f}: Highly hydrophilic at physiological pH — passive encapsulation unlikely. Remote pH-gradient loading required (requires ionizable amine with pKa 7.5–10.5).")
     else:  # > 5
         score += 10
-        concerns.append(f"logP {logp:.2f}: Highly lipophilic — likely integrates into the lipid bilayer rather than the aqueous core. Consider nanostructured lipid carriers (NLC) or lipid-drug conjugate strategies.")
+        concerns.append(f"logD₇.₄ {logd:.2f}: Highly lipophilic at pH 7.4 — likely integrates into the lipid bilayer rather than the aqueous core. Consider nanostructured lipid carriers (NLC) or lipid-drug conjugate strategies.")
 
     # ── Basic pKa ──
     if pred_pka is not None:
@@ -565,6 +579,7 @@ def analyze():
     logp = calculate_logp(mol)
     pred_pka, pka_group, all_basic, highlight_atoms = predict_base_pka(mol)
     acidic_groups = predict_acidic_pka(mol)
+    logd_74 = calculate_logd(logp, all_basic, acidic_groups, ph=7.4)
     svg = mol_to_svg(mol, highlight_atoms or None)
 
     mw        = round(rdMolDescriptors.CalcExactMolWt(mol), 3)
@@ -581,7 +596,7 @@ def analyze():
         pubchem = f_pc.result()
         chembl  = f_che.result()
 
-    liposomal = evaluate_liposomal_suitability(logp, pred_pka, all_basic, acidic_groups, mw, tpsa, hbd, chembl)
+    liposomal = evaluate_liposomal_suitability(logd_74, pred_pka, all_basic, acidic_groups, mw, tpsa, hbd, chembl)
 
     # PubMed news + ClinicalTrials in parallel (use compound name if found)
     compound_name = (chembl or {}).get("name") or (pubchem or {}).get("iupac_name") or ""
@@ -595,6 +610,7 @@ def analyze():
         "smiles":               canonical,
         "svg":                  svg,
         "logp":                 logp,
+        "logd":                 logd_74,
         "predicted_pka":        pred_pka,
         "pka_functional_group": pka_group,
         "all_basic_groups":     all_basic,

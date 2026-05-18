@@ -222,7 +222,7 @@
 <div class="container">
   <header>
     <h1>ChemPredict</h1>
-    <p>Enter a SMILES code to evaluate logP, base pKa, and charge microspeciation — powered by RDKit &amp; PubChem</p>
+    <p>Enter a SMILES code to evaluate logD₇.₄, base pKa, and charge microspeciation — powered by RDKit &amp; PubChem</p>
   </header>
 
   <div class="input-card">
@@ -272,9 +272,9 @@
         <div class="card-title">Key Properties</div>
         <div class="metrics-row">
           <div class="metric">
-            <div class="metric-val c-logp" id="v-logp">—</div>
-            <div class="metric-lbl">logP</div>
-            <div class="metric-sub">RDKit Crippen</div>
+            <div class="metric-val c-logp" id="v-logd">—</div>
+            <div class="metric-lbl">logD<sub>7.4</sub></div>
+            <div class="metric-sub" id="v-logd-sub">ionization-corrected</div>
           </div>
           <div class="metric">
             <div class="metric-val c-pka"  id="v-pka">—</div>
@@ -294,6 +294,7 @@
       <div class="card">
         <div class="card-title">Molecular Descriptors</div>
         <table class="dtbl">
+          <tr><td>logP (Ro5 reference)</td><td id="v-logp">—</td></tr>
           <tr><td>H-Bond Donors</td><td id="v-hbd">—</td></tr>
           <tr><td>H-Bond Acceptors</td><td id="v-hba">—</td></tr>
           <tr><td>Topological PSA (Å²)</td><td id="v-tpsa">—</td></tr>
@@ -798,6 +799,8 @@ function render(d) {
   $('canon-smi').textContent = 'Canonical SMILES: ' + d.smiles;
 
   // Metrics
+  $('v-logd').textContent    = d.logd?.toFixed(2) ?? 'N/A';
+  $('v-logd-sub').textContent = d.logp != null ? `logP ${d.logp.toFixed(2)} → pH 7.4` : 'ionization-corrected';
   $('v-logp').textContent    = d.logp?.toFixed(2) ?? 'N/A';
   $('v-pka').textContent     = d.predicted_pka?.toFixed(1) ?? 'N/A';
   $('v-pka-grp').textContent = d.pka_functional_group || '(no basic group)';
