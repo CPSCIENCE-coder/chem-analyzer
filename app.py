@@ -119,6 +119,25 @@ def predict_acidic_pka(mol):
     return hits
 
 
+# ── Name → SMILES resolver ────────────────────────────────────────────────
+
+def resolve_name_to_smiles(name):
+    """Resolve a common/IUPAC/scientific name to an isomeric SMILES via PubChem."""
+    try:
+        encoded = urllib.parse.quote(name)
+        r = requests.get(
+            f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{encoded}"
+            f"/property/IsomericSMILES/JSON",
+            timeout=10)
+        if r.status_code == 200:
+            props = r.json().get("PropertyTable", {}).get("Properties", [])
+            if props:
+                return props[0].get("IsomericSMILES")
+    except Exception:
+        pass
+    return None
+
+
 # ── PubChem ────────────────────────────────────────────────────────────────
 
 def get_all_pubchem(smiles):
@@ -565,14 +584,24 @@ def index():
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
     body   = request.get_json(force=True)
-    smiles = (body.get("smiles") or "").strip()
+    query  = (body.get("smiles") or "").strip()
 
-    if not smiles:
-        return jsonify({"error": "No SMILES string provided."}), 400
+    if not query:
+        return jsonify({"error": "No input provided."}), 400
 
-    mol = Chem.MolFromSmiles(smiles)
+    mol = Chem.MolFromSmiles(query)
+    input_name = None
     if mol is None:
-        return jsonify({"error": "Invalid SMILES string — please check your input."}), 400
+        resolved = resolve_name_to_smiles(query)
+        if resolved:
+            mol = Chem.MolFromSmiles(resolved)
+            if mol:
+                input_name = query
+                query = resolved
+        if mol is None:
+            return jsonify({
+                "error": f"Could not parse as SMILES or find '{query}' in the PubChem database."
+            }), 400
 
     canonical = Chem.MolToSmiles(mol)
 
@@ -608,6 +637,7 @@ def analyze():
 
     return jsonify({
         "smiles":               canonical,
+        "input_name":           input_name,
         "svg":                  svg,
         "logp":                 logp,
         "logd":                 logd_74,
