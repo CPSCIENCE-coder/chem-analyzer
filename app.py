@@ -122,19 +122,61 @@ def predict_acidic_pka(mol):
 # ── Name → SMILES resolver ────────────────────────────────────────────────
 
 def resolve_name_to_smiles(name):
-    """Resolve a common/IUPAC/scientific name to an isomeric SMILES via PubChem."""
+    """Resolve a common/IUPAC/scientific name to SMILES.
+    Tries three routes in order: PubChem direct, PubChem via CID, ChEMBL."""
+    encoded = urllib.parse.quote(name)
+
+    # 1 — PubChem: name → IsomericSMILES in one call
     try:
-        encoded = urllib.parse.quote(name)
         r = requests.get(
             f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{encoded}"
             f"/property/IsomericSMILES/JSON",
-            timeout=10)
+            timeout=20, headers={"User-Agent": "ChemPredict/1.0"})
         if r.status_code == 200:
             props = r.json().get("PropertyTable", {}).get("Properties", [])
             if props:
-                return props[0].get("IsomericSMILES")
+                smi = props[0].get("IsomericSMILES")
+                if smi:
+                    return smi
     except Exception:
         pass
+
+    # 2 — PubChem: name → CID → CanonicalSMILES (different endpoint, avoids cached failures)
+    try:
+        r = requests.get(
+            f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{encoded}/cids/JSON",
+            timeout=20, headers={"User-Agent": "ChemPredict/1.0"})
+        if r.status_code == 200:
+            cids = r.json().get("IdentifierList", {}).get("CID", [])
+            if cids:
+                r2 = requests.get(
+                    f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cids[0]}"
+                    f"/property/CanonicalSMILES/JSON",
+                    timeout=20, headers={"User-Agent": "ChemPredict/1.0"})
+                if r2.status_code == 200:
+                    props = r2.json().get("PropertyTable", {}).get("Properties", [])
+                    if props:
+                        smi = props[0].get("CanonicalSMILES")
+                        if smi:
+                            return smi
+    except Exception:
+        pass
+
+    # 3 — ChEMBL: preferred-name exact match (independent server, different IP routing)
+    try:
+        r = requests.get(
+            f"https://www.ebi.ac.uk/chembl/api/data/molecule.json"
+            f"?pref_name__iexact={encoded}&limit=1",
+            timeout=20)
+        if r.status_code == 200:
+            mols = r.json().get("molecules", [])
+            if mols:
+                smi = (mols[0].get("molecule_structures") or {}).get("canonical_smiles")
+                if smi:
+                    return smi
+    except Exception:
+        pass
+
     return None
 
 
@@ -579,6 +621,18 @@ def evaluate_liposomal_suitability(logd, pred_pka, all_basic, acidic_groups, mw,
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/api/name-to-smiles", methods=["POST"])
+def name_to_smiles_route():
+    body  = request.get_json(force=True)
+    name  = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "No name provided."}), 400
+    smi = resolve_name_to_smiles(name)
+    if smi:
+        return jsonify({"smiles": smi})
+    return jsonify({"error": f"Could not find '{name}' in any database."}), 404
 
 
 @app.route("/api/analyze", methods=["POST"])
