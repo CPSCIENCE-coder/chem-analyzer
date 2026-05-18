@@ -796,6 +796,46 @@ def evaluate_liposomal_suitability(logd, pred_pka, all_basic, acidic_groups, mw,
         if len(off) > 3:
             concerns.append(f"{len(off)} off-target activities (IC₅₀ < 1 µM) — targeted liposomal delivery may improve therapeutic index.")
 
+    # ── DMSO co-solvent feasibility (ZoneOne patent, US20140220110A1) ──────────
+    # Hayes, Noble & Szoka Jr. established that ≤10 % v/v DMSO (or acetonitrile,
+    # NMP, THF, DMF) enables remote loading of sparingly water-soluble drugs.
+    # Practical safety limit for in vivo use is ≤5 % v/v (hemolysis risk above
+    # this). Utility scales with logD: high logD → excellent DMSO solubility at
+    # low % v/v; low logD → DMSO offers little advantage over aqueous methods.
+    if logd > 4.0:
+        rationale.append(
+            f"DMSO co-solvent feasibility (ZoneOne, US20140220110A1): logD₇.₄ {logd:.2f} — "
+            f"DMSO at ≤5% v/v is expected to fully dissolve this highly lipophilic compound, "
+            f"making it an excellent co-solvent choice for ZoneOne-style remote loading. "
+            f"Low DMSO concentration minimises bilayer disruption and hemolytic risk. "
+            f"Remove residual DMSO after loading by dialysis or size-exclusion chromatography."
+        )
+    elif logd > 2.5:
+        rationale.append(
+            f"DMSO co-solvent feasibility (ZoneOne, US20140220110A1): logD₇.₄ {logd:.2f} — "
+            f"DMSO at 5–10% v/v should provide adequate solubility enhancement for "
+            f"co-solvent-assisted remote loading. Preferred over NMP or THF due to lower "
+            f"cytotoxicity profile. Monitor bilayer integrity; remove residual DMSO post-loading "
+            f"to remain within safe in vivo limits (≤5% v/v residual)."
+        )
+    elif logd > 1.0:
+        concerns.append(
+            f"DMSO co-solvent feasibility (ZoneOne, US20140220110A1): logD₇.₄ {logd:.2f} — "
+            f"moderate lipophilicity may require >10% v/v DMSO to achieve adequate drug "
+            f"dissolution; concentrations above this risk bilayer disruption and membrane "
+            f"toxicity. Consider alternative polar aprotic solvents (NMP, acetonitrile) "
+            f"at lower volumes, or reduce drug-to-lipid ratio to stay within safe DMSO "
+            f"limits (≤5% v/v in vivo)."
+        )
+    else:
+        concerns.append(
+            f"DMSO co-solvent feasibility (ZoneOne, US20140220110A1): logD₇.₄ {logd:.2f} — "
+            f"drug is predominantly hydrophilic at pH 7.4; DMSO is unlikely to provide "
+            f"meaningful solubility enhancement for co-solvent-assisted loading. "
+            f"Standard aqueous remote loading or hydrophilic co-solvents (PEG400, ethanol) "
+            f"are more appropriate for this compound."
+        )
+
     if   score >= 75: overall, color = "Highly Suitable", "green"
     elif score >= 55: overall, color = "Suitable",        "green"
     elif score >= 35: overall, color = "Potentially Suitable", "warn"
