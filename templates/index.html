@@ -277,8 +277,16 @@
     .lipo-warn  { color: var(--warn); background: rgba(196,125,0,.08); border-color: rgba(196,125,0,.3); }
     .lipo-error { color: var(--error); background: rgba(211,47,47,.08); border-color: rgba(211,47,47,.3); }
     .lipo-score { font-size: .8rem; color: var(--muted); }
-    .lipo-method { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(54,96,208,.07); border: 1px solid rgba(54,96,208,.18); border-radius: 10px; margin-bottom: 16px; font-size: .86rem; color: var(--accent); font-weight: 600; }
-    .lipo-method::before { content: "⚗"; font-style: normal; flex-shrink: 0; }
+    .lipo-methods { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    .lipo-meth { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; background: var(--surface); }
+    .lipo-meth-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    .lipo-meth-name { font-size: .87rem; font-weight: 600; color: var(--text); }
+    .lipo-meth-suit { padding: 3px 11px; border-radius: 20px; font-size: .76rem; font-weight: 700; border: 1px solid; white-space: nowrap; }
+    .lipo-suit-green { color: #1a7a52; background: rgba(26,122,82,.1);   border-color: rgba(26,122,82,.3); }
+    .lipo-suit-warn  { color: var(--warn); background: rgba(196,125,0,.08); border-color: rgba(196,125,0,.3); }
+    .lipo-suit-error { color: var(--error); background: rgba(211,47,47,.08); border-color: rgba(211,47,47,.3); }
+    .lipo-meth-notes { font-size: .82rem; color: var(--muted); line-height: 1.5; margin-bottom: 5px; }
+    .lipo-meth-ref   { font-size: .74rem; color: var(--muted); font-style: italic; opacity: .8; }
     .lipo-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     @media(max-width:660px){ .lipo-cols { grid-template-columns: 1fr; } }
     .lipo-sec { background: var(--card); border-radius: 10px; padding: 14px 16px; }
@@ -487,7 +495,7 @@
           <span class="lipo-verdict" id="lipo-verdict">—</span>
           <span class="lipo-score" id="lipo-score"></span>
         </div>
-        <div class="lipo-method" id="lipo-method"></div>
+        <div class="lipo-methods" id="lipo-methods"></div>
         <div class="lipo-cols">
           <div class="lipo-sec" id="lipo-rationale-sec" style="display:none">
             <div class="lipo-sec-title">Supporting Factors</div>
@@ -1236,7 +1244,21 @@ function renderLiposomal(lipo) {
   verdictEl.className = 'lipo-verdict lipo-' + (lipo.verdict_color || 'warn');
 
   $('lipo-score').textContent = `Score: ${lipo.score}/100`;
-  $('lipo-method').textContent = lipo.loading_method;
+
+  const methEl = $('lipo-methods');
+  methEl.innerHTML = '';
+  (lipo.loading_methods || []).forEach(m => {
+    const div = document.createElement('div');
+    div.className = 'lipo-meth';
+    div.innerHTML =
+      `<div class="lipo-meth-header">` +
+        `<span class="lipo-meth-name">${escHtml(m.method)}</span>` +
+        `<span class="lipo-meth-suit lipo-suit-${escHtml(m.color)}">${escHtml(m.suitability)}</span>` +
+      `</div>` +
+      `<p class="lipo-meth-notes">${escHtml(m.notes)}</p>` +
+      `<p class="lipo-meth-ref">Ref: ${escHtml(m.ref)}</p>`;
+    methEl.appendChild(div);
+  });
 
   const ratSec = $('lipo-rationale-sec'), ratUl = $('lipo-rationale');
   if (lipo.rationale && lipo.rationale.length) {

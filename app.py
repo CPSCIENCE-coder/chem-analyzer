@@ -499,120 +499,259 @@ def get_clinical_trials(name, max_results=5):
 # ── Liposomal encapsulation suitability ───────────────────────────────────
 
 def evaluate_liposomal_suitability(logd, pred_pka, all_basic, acidic_groups, mw, tpsa, hbd, chembl_data):
-    score      = 0
-    rationale  = []
-    concerns   = []
-    load_mode  = None   # "remote" | "passive"
+    score     = 0
+    rationale = []
+    concerns  = []
+    methods   = []   # list of {method, suitability, color, notes, ref}
 
-    # ── logD7.4 ──
-    if 1.0 <= logd <= 3.5:
-        score += 30; load_mode = "passive"
-        rationale.append(f"logD₇.₄ {logd:.2f}: Optimal (1–3.5) — good bilayer affinity with sufficient aqueous solubility at physiological pH; high passive encapsulation efficiency expected.")
-    elif 3.5 < logd <= 5.0:
-        score += 22; load_mode = "passive"
-        rationale.append(f"logD₇.₄ {logd:.2f}: Lipophilic (3.5–5) — passive loading feasible; monitor for bilayer integration rather than aqueous-core retention.")
-        concerns.append("Elevated logD₇.₄ may cause drug to embed in the lipid bilayer membrane, reducing encapsulation efficiency and altering release kinetics.")
-    elif 0.0 <= logd < 1.0:
-        score += 15
-        rationale.append(f"logD₇.₄ {logd:.2f}: Hydrophilic at pH 7.4 — passive encapsulation efficiency will be low; remote loading is strongly preferred if an ionizable amine is present.")
-    elif logd < 0:
-        score += 5
-        concerns.append(f"logD₇.₄ {logd:.2f}: Highly hydrophilic at physiological pH — passive encapsulation unlikely. Remote pH-gradient loading required (requires ionizable amine with pKa 7.5–10.5).")
-    else:  # > 5
-        score += 10
-        concerns.append(f"logD₇.₄ {logd:.2f}: Highly lipophilic at pH 7.4 — likely integrates into the lipid bilayer rather than the aqueous core. Consider nanostructured lipid carriers (NLC) or lipid-drug conjugate strategies.")
+    # Neutral-form bilayer permeability needed by remote-loading methods
+    membrane_permeable = 0.5 <= logd <= 5.0
 
-    # ── Basic pKa ──
+    # ── Method 1: Remote loading — Ammonium Sulfate pH gradient ──────────────
+    # Classic Haran method: NH4+ gradient creates internal pH ~4; neutral drug
+    # crosses bilayer, gets protonated, trapped as ammonium salt.
+    # Best range: pKa 7.5–10.5 (partially neutral at pH 7.4, fully ionised at pH 4).
     if pred_pka is not None:
         if 7.5 <= pred_pka <= 10.5:
-            score += 35; load_mode = "remote"
-            rationale.append(f"Basic pKa {pred_pka:.1f}: Ideal for remote (active) loading — ionizable amine enables transmembrane pH-gradient trapping via ammonium sulfate or citrate buffer method. Encapsulation efficiency typically >80%.")
+            methods.append({
+                "method": "Remote — Ammonium Sulfate pH gradient",
+                "suitability": "Recommended",
+                "color": "green",
+                "notes": (f"pKa {pred_pka:.1f}: ionizable amine is partially neutral at pH 7.4 "
+                          f"(crosses bilayer) and fully protonated at internal pH ~4. "
+                          f"Expected EE >80%. Classic method for doxorubicin, daunorubicin."),
+                "ref": "Haran et al., Biochim. Biophys. Acta 1151 (1993) 201–215"
+            })
         elif 10.5 < pred_pka <= 12.5:
-            score += 20; load_mode = load_mode or "remote"
-            rationale.append(f"Basic pKa {pred_pka:.1f}: Strongly basic amine — remote loading feasible but ionization at endosomal pH (~5.5) may be incomplete, potentially reducing triggered release.")
-            concerns.append(f"pKa {pred_pka:.1f} is very high; the amine may remain unionized at endosomal/lysosomal pH, reducing pH-triggered release efficiency.")
+            methods.append({
+                "method": "Remote — Ammonium Sulfate pH gradient",
+                "suitability": "Feasible",
+                "color": "warn",
+                "notes": (f"pKa {pred_pka:.1f}: strongly basic amine; remote loading feasible "
+                          f"but near-complete ionisation at pH 7.4 limits membrane permeation "
+                          f"rate and may reduce EE."),
+                "ref": "Haran et al., Biochim. Biophys. Acta 1151 (1993) 201–215"
+            })
+        elif 5.0 <= pred_pka < 7.5:
+            methods.append({
+                "method": "Remote — Ammonium Sulfate pH gradient",
+                "suitability": "Limited",
+                "color": "error",
+                "notes": (f"pKa {pred_pka:.1f}: weak base is mostly neutral at physiological pH "
+                          f"but also mostly neutral at internal pH ~4; insufficient trapping "
+                          f"driving force for high EE."),
+                "ref": "Haran et al., Biochim. Biophys. Acta 1151 (1993) 201–215"
+            })
+
+    # ── Method 2: Remote — TEA-SOS (TEASOS) trapping (Zhao & Szoka) ──────────
+    # Triethylammonium sucrose octasulfate inside liposome (pH ~4, high [SO4]).
+    # Neutral drug permeates bilayer at pH 7.4, gets protonated inside, forms
+    # insoluble Drugn+·(SOS8-)x complex → very high EE and superior retention.
+    # Basis of ONIVYDE (liposomal irinotecan, MM-398).
+    # Key requirements: pKa 6–10.5, logD 7.4 in range that allows neutral-form
+    # bilayer transit (roughly 0.5–5.0).
+    if pred_pka is not None:
+        if 6.0 <= pred_pka <= 10.5 and membrane_permeable:
+            methods.append({
+                "method": "Remote — TEA-SOS trapping (Zhao & Szoka / Drummond)",
+                "suitability": "Recommended",
+                "color": "green",
+                "notes": (f"pKa {pred_pka:.1f}, logD₇.₄ {logd:.2f}: neutral form crosses bilayer "
+                          f"at pH 7.4; protonated drug precipitates as insoluble SOS⁸⁻ complex "
+                          f"inside (pH ~4), giving very high EE with superior drug retention "
+                          f"vs ammonium-sulfate method. Preferred for polycyclic or planar amines."),
+                "ref": ("Zhao & Szoka, Nat. Rev. Drug Discov. 1 (2021); "
+                        "Drummond et al., Cancer Res. 66 (2006) 3271–3277")
+            })
+        elif pred_pka is not None and 6.0 <= pred_pka <= 10.5 and not membrane_permeable:
+            methods.append({
+                "method": "Remote — TEA-SOS trapping (Zhao & Szoka / Drummond)",
+                "suitability": "Limited",
+                "color": "warn",
+                "notes": (f"pKa {pred_pka:.1f} is in range, but logD₇.₄ {logd:.2f} is outside "
+                          f"the window for efficient neutral-form bilayer permeation required "
+                          f"by TEA-SOS trapping. Consider lipid composition optimisation."),
+                "ref": "Zhao & Szoka, Nat. Rev. Drug Discov. 1 (2021)"
+            })
+        elif pred_pka is not None and 10.5 < pred_pka <= 12.5 and membrane_permeable:
+            methods.append({
+                "method": "Remote — TEA-SOS trapping (Zhao & Szoka / Drummond)",
+                "suitability": "Feasible",
+                "color": "warn",
+                "notes": (f"pKa {pred_pka:.1f}: drug is largely ionised at pH 7.4; reduced "
+                          f"neutral-form permeation may slow TEA-SOS loading, but prolonged "
+                          f"incubation or higher temperature can improve EE."),
+                "ref": "Zhao & Szoka, Nat. Rev. Drug Discov. 1 (2021)"
+            })
+
+    # ── Method 3: Passive loading — thin film hydration / solvent injection ──
+    if logd >= 1.0:
+        if 1.0 <= logd <= 3.5:
+            methods.append({
+                "method": "Passive — thin film hydration / solvent injection",
+                "suitability": "Suitable",
+                "color": "green",
+                "notes": (f"logD₇.₄ {logd:.2f}: optimal range for passive bilayer incorporation "
+                          f"with adequate aqueous retention. Drug distributes between bilayer "
+                          f"and aqueous lumen according to its partition coefficient."),
+                "ref": "Bangham et al., J. Mol. Biol. 13 (1965) 238–252"
+            })
+        elif 3.5 < logd <= 5.5:
+            methods.append({
+                "method": "Passive — thin film hydration / solvent injection",
+                "suitability": "Feasible",
+                "color": "warn",
+                "notes": (f"logD₇.₄ {logd:.2f}: lipophilic drug predominantly embeds in "
+                          f"bilayer membrane rather than aqueous core; low drug-to-lipid "
+                          f"ratio required to avoid bilayer disruption."),
+                "ref": "Bangham et al., J. Mol. Biol. 13 (1965) 238–252"
+            })
+        elif logd > 5.5:
+            methods.append({
+                "method": "Passive — thin film hydration / solvent injection",
+                "suitability": "Not Recommended",
+                "color": "error",
+                "notes": (f"logD₇.₄ {logd:.2f}: extremely lipophilic; drug likely fully "
+                          f"intercalates into bilayer at saturating concentrations, causing "
+                          f"membrane disruption. Consider NLC or lipid-drug conjugates."),
+                "ref": "Bangham et al., J. Mol. Biol. 13 (1965) 238–252"
+            })
+    else:
+        methods.append({
+            "method": "Passive — thin film hydration / solvent injection",
+            "suitability": "Poor",
+            "color": "error",
+            "notes": (f"logD₇.₄ {logd:.2f}: highly hydrophilic at pH 7.4; passive "
+                      f"encapsulation in aqueous core only — very low EE (<5%) expected "
+                      f"unless liposome size and drug concentration are optimised."),
+            "ref": "Bangham et al., J. Mol. Biol. 13 (1965) 238–252"
+        })
+
+    # ── Method 4: DMSO co-solvent loading (Zhao & Szoka) ─────────────────────
+    # Drug dissolved in ≤5% v/v DMSO then added to pre-formed liposomes.
+    # DMSO transiently disorders bilayer, allowing hydrophobic drug intercalation.
+    # Residual DMSO removed by dialysis or SEC after loading.
+    # Best for: logD > 2.5, poorly water-soluble, no ionisable group required.
+    if logd > 2.0:
+        if logd > 4.0:
+            dmso_suit, dmso_col = "Recommended", "green"
+            dmso_note = (f"logD₇.₄ {logd:.2f}: highly lipophilic drug is an ideal candidate "
+                         f"for DMSO co-solvent (≤5% v/v) intercalation. DMSO transiently "
+                         f"disorders bilayer to facilitate loading; remove residual solvent "
+                         f"by dialysis or size-exclusion chromatography.")
+        elif logd > 2.5:
+            dmso_suit, dmso_col = "Feasible", "warn"
+            dmso_note = (f"logD₇.₄ {logd:.2f}: moderate lipophilicity; DMSO co-solvent "
+                         f"loading applicable when aqueous passive loading gives insufficient "
+                         f"EE. Use ≤3% v/v DMSO to limit membrane disruption.")
+        else:
+            dmso_suit, dmso_col = "Marginal", "warn"
+            dmso_note = (f"logD₇.₄ {logd:.2f}: borderline lipophilicity; DMSO loading "
+                         f"may offer modest EE improvement over aqueous methods for "
+                         f"water-soluble drugs with low membrane affinity.")
+        methods.append({
+            "method": "DMSO co-solvent loading (Zhao & Szoka)",
+            "suitability": dmso_suit,
+            "color": dmso_col,
+            "notes": dmso_note,
+            "ref": ("Szoka & Papahadjopoulos, Proc. Natl. Acad. Sci. 75 (1978) 4194–4198; "
+                    "Zhao & Szoka, Nat. Rev. Drug Discov. 1 (2021)")
+        })
+
+    # ── Physicochemical scoring (overall suitability) ────────────────────────
+    if 1.0 <= logd <= 3.5:
+        score += 30
+        rationale.append(f"logD₇.₄ {logd:.2f}: Optimal (1–3.5) — good bilayer affinity with sufficient aqueous solubility; supports passive and remote loading.")
+    elif 3.5 < logd <= 5.0:
+        score += 22
+        rationale.append(f"logD₇.₄ {logd:.2f}: Lipophilic (3.5–5) — DMSO or passive loading feasible; monitor bilayer integration vs aqueous-core retention.")
+        concerns.append("Elevated logD₇.₄ may cause drug to embed in the lipid bilayer rather than the aqueous core, altering release kinetics.")
+    elif 0.0 <= logd < 1.0:
+        score += 15
+        rationale.append(f"logD₇.₄ {logd:.2f}: Hydrophilic at pH 7.4 — low passive EE; remote loading preferred if ionisable amine present.")
+    elif logd < 0:
+        score += 5
+        concerns.append(f"logD₇.₄ {logd:.2f}: Highly hydrophilic — passive encapsulation unlikely; requires remote loading (ionisable amine, pKa 7.5–10.5) or pH-sensitive formulation.")
+    else:
+        score += 10
+        concerns.append(f"logD₇.₄ {logd:.2f}: Highly lipophilic — likely fully integrates into bilayer. Consider NLC or lipid–drug conjugate strategies.")
+
+    if pred_pka is not None:
+        if 7.5 <= pred_pka <= 10.5:
+            score += 35
+            rationale.append(f"Basic pKa {pred_pka:.1f}: Ideal for both ammonium sulfate and TEA-SOS remote loading — EE >80% expected.")
+        elif 10.5 < pred_pka <= 12.5:
+            score += 20
+            rationale.append(f"Basic pKa {pred_pka:.1f}: Strongly basic — remote loading feasible; ionisation at endosomal pH may reduce triggered release.")
+            concerns.append(f"pKa {pred_pka:.1f} may limit endosomal pH-triggered release; consider citrate or acetate gradient for improved release kinetics.")
         elif 5.0 <= pred_pka < 7.5:
             score += 10
-            concerns.append(f"Basic pKa {pred_pka:.1f}: Weakly basic — partially ionized at physiological pH; transmembrane pH gradient may be insufficient for high encapsulation efficiency via remote loading.")
+            concerns.append(f"Basic pKa {pred_pka:.1f}: Weak base — pH gradient driving force marginal; TEA-SOS preferred over ammonium sulfate for this pKa range.")
         else:
             score += 5
-            concerns.append(f"Basic pKa {pred_pka:.1f}: Very weak base — remote pH-gradient loading not effective at practical pH differentials.")
+            concerns.append(f"Basic pKa {pred_pka:.1f}: Very weak base — remote loading not effective; rely on passive or DMSO method.")
     else:
-        concerns.append("No ionizable basic group detected — remote (pH-gradient) loading not applicable. Passive loading or pH-sensitive lipid formulations (e.g., DOPE/CHEMS) should be considered.")
+        concerns.append("No ionisable basic group — remote pH-gradient loading not applicable. Use passive, DMSO, or pH-sensitive lipid formulations (DOPE/CHEMS).")
 
-    # ── Acidic groups ──
     if acidic_groups:
         lowest = min(g["pka"] for g in acidic_groups)
         if lowest < 4.5:
-            concerns.append(f"Acidic group (pKa {lowest:.1f}) — drug is anionic at physiological pH, which may cause electrostatic repulsion with negatively charged DSPE-PEG liposomes. Use cationic lipids (DOTAP) or neutral PEGylated formulations.")
+            concerns.append(f"Acidic group (pKa {lowest:.1f}) — anionic at physiological pH; potential electrostatic repulsion with DSPE-PEG liposomes. Use DOTAP or neutral lipid formulations.")
         else:
-            concerns.append(f"Weakly acidic group (pKa {lowest:.1f}) detected — monitor potential drug–lipid interactions at different pH conditions.")
+            concerns.append(f"Weakly acidic group (pKa {lowest:.1f}) — monitor drug–lipid electrostatic interactions.")
 
-    # ── MW ──
     if mw < 500:
         score += 15
-        rationale.append(f"MW {mw:.0f} Da: Small molecule — excellent candidate for liposomal encapsulation.")
+        rationale.append(f"MW {mw:.0f} Da: Small molecule — excellent liposomal candidate.")
     elif mw < 1000:
         score += 8
-        rationale.append(f"MW {mw:.0f} Da: Medium-sized molecule — acceptable for encapsulation; larger liposomes (≥150 nm) may improve loading.")
+        rationale.append(f"MW {mw:.0f} Da: Medium size — acceptable; larger liposomes (≥150 nm) may improve EE.")
     else:
         score += 2
-        concerns.append(f"MW {mw:.0f} Da: Large molecule — may reduce encapsulation efficiency and diffusion across the lipid bilayer.")
+        concerns.append(f"MW {mw:.0f} Da: Large molecule — reduced transmembrane diffusion; bilayer loading only.")
 
-    # ── TPSA ──
     if tpsa < 60:
         score += 10
-        rationale.append(f"TPSA {tpsa:.0f} Å²: Low polar surface area — favorable bilayer interaction and membrane partitioning.")
+        rationale.append(f"TPSA {tpsa:.0f} Å²: Low polar surface area — favourable bilayer interaction and membrane partitioning.")
     elif tpsa < 120:
         score += 7
     else:
         score += 3
-        concerns.append(f"TPSA {tpsa:.0f} Å²: High polar surface area — reduced bilayer permeability; drug may remain poorly associated with lipid membrane.")
+        concerns.append(f"TPSA {tpsa:.0f} Å²: High polar surface area — reduced bilayer permeability; drug may stay in aqueous lumen.")
 
-    # ── HBD ──
     if hbd <= 2:
         score += 10
-        rationale.append(f"H-bond donors ({hbd}): Low count — favorable for membrane partitioning and passive permeation.")
+        rationale.append(f"H-bond donors ({hbd}): Low — favourable membrane partitioning.")
     elif hbd <= 5:
         score += 6
     else:
         score += 2
-        concerns.append(f"H-bond donors ({hbd}): High count — hydrogen bonding with aqueous phase may reduce membrane affinity and encapsulation.")
+        concerns.append(f"H-bond donors ({hbd}): High — excess H-bonding to aqueous phase may reduce bilayer affinity.")
 
-    # ── Off-target toxicity from ChEMBL ──
     if chembl_data:
         if chembl_data.get("withdrawn"):
             reason = chembl_data.get("withdrawn_reason") or "unknown reason"
             tox_kw = ["tox", "cardiac", "hepat", "renal", "adverse", "safety", "carcinogen", "arrhythmia", "QT", "mutagenic"]
             if any(k.lower() in reason.lower() for k in tox_kw):
-                concerns.append(f"Withdrawn due to systemic toxicity ({reason}) — liposomal encapsulation with targeted delivery could reduce systemic exposure and potentially rehabilitate the compound.")
+                concerns.append(f"Withdrawn due to toxicity ({reason}) — liposomal encapsulation with targeted delivery may reduce systemic exposure and rehabilitate the compound.")
             else:
-                concerns.append(f"Drug withdrawn/discontinued ({reason}) — evaluate whether reformulation as a liposome addresses the underlying withdrawal issue.")
+                concerns.append(f"Drug withdrawn/discontinued ({reason}) — evaluate whether liposomal reformulation addresses the withdrawal basis.")
         off = [r for r in (chembl_data.get("ic50") or []) if r.get("value") is not None and r["value"] < 1000]
         if len(off) > 3:
-            concerns.append(f"{len(off)} off-target activities with IC₅₀ < 1 µM detected — liposomal targeted delivery may improve therapeutic index by limiting systemic exposure.")
+            concerns.append(f"{len(off)} off-target activities (IC₅₀ < 1 µM) — targeted liposomal delivery may improve therapeutic index.")
 
-    # ── Loading method label ──
-    if load_mode == "remote":
-        loading_label = "Remote loading (pH gradient — ammonium sulfate / citrate buffer method)"
-    elif load_mode == "passive":
-        loading_label = "Passive loading (thin-film hydration or solvent injection)"
-    else:
-        loading_label = "No standard method applicable — evaluate pH-sensitive lipid formulations (DOPE/CHEMS)"
-
-    # ── Verdict ──
     if   score >= 75: overall, color = "Highly Suitable", "green"
     elif score >= 55: overall, color = "Suitable",        "green"
     elif score >= 35: overall, color = "Potentially Suitable", "warn"
     else:             overall, color = "Limited Suitability",  "error"
 
     return {
-        "overall":       overall,
-        "verdict_color": color,
-        "score":         score,
-        "loading_method": loading_label,
-        "rationale":     rationale,
-        "concerns":      concerns,
+        "overall":         overall,
+        "verdict_color":   color,
+        "score":           score,
+        "loading_methods": methods,
+        "rationale":       rationale,
+        "concerns":        concerns,
     }
 
 
