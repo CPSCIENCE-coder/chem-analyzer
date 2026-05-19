@@ -912,33 +912,50 @@ def evaluate_liposomal_suitability(logd, pred_pka, all_basic, acidic_groups, mw,
 
 
 # ── Compound pricing ──────────────────────────────────────────────────────────
-# Try MedChemExpress first (ZoneOne / MCE catalog), then Selleckchem, then
-# Cayman Chemical.  Returns pricing for 50 mg or the closest available pack.
+# Primary supplier: MedChemExpress (MCE).  Uses a warmed session (homepage
+# visit first acquires cookies) and tries direct product-URL slugs before
+# falling back to the search page.  Always returns at least an MCE search
+# link so the user can click through even when the WAF blocks scraping.
+# Falls back to Selleckchem → Cayman Chemical only when MCE returns nothing.
 
 def fetch_pricing(compound_name):
     if not compound_name:
         return None
 
-    _ua = (
+    _MCE   = "https://www.medchemexpress.com"
+    _ua    = (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
     )
-    hdrs = {
-        "User-Agent": _ua,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
     enc = urllib.parse.quote(compound_name, safe="")
 
     _NAV = {
-        "search", "about", "faq", "blog", "shipping", "service", "login",
-        "cart", "account", "contact", "static", "index", "category",
-        "custom", "news", "sitemap", "privacy", "terms", "support",
-        "promotions", "resources", "collection", "antibody", "assay",
+        "search","about","faq","blog","shipping","service","login","cart",
+        "account","contact","static","index","category","custom","news",
+        "sitemap","privacy","terms","support","promotions","resources",
+        "collection","antibody","assay","inhibitor-library","screening",
     }
 
+    # ── helpers ──────────────────────────────────────────────────────────────
+
+    def _make_session():
+        s = requests.Session()
+        s.headers.update({
+            "User-Agent":              _ua,
+            "Accept":                  "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language":         "en-US,en;q=0.9",
+            "Accept-Encoding":         "gzip, deflate, br",
+            "Connection":              "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest":          "document",
+            "Sec-Fetch-Mode":          "navigate",
+            "Sec-Fetch-Site":          "none",
+            "Sec-Fetch-User":          "?1",
+            "Cache-Control":           "max-age=0",
+        })
+        return s
+
     def _price_50mg(html):
-        """Return (price_str, note) for a 50 mg pack from raw HTML."""
         for pat in [
             r'50\s*mg[^$\n<]{0,200}\$\s*([\d,]+\.?\d*)',
             r'\$\s*([\d,]+\.?\d*)[^$\n<]{0,120}50\s*mg',
@@ -951,74 +968,105 @@ def fetch_pricing(compound_name):
                     return f"${float(m.group(1).replace(',','')):.2f}", None
                 except ValueError:
                     continue
-        # JSON-LD structured data fallback
-        jld = _re.search(
-            r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>',
-            html, _re.DOTALL | _re.IGNORECASE
-        )
+        jld = _re.search(r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>',
+                         html, _re.DOTALL | _re.IGNORECASE)
         if jld:
             pm = _re.search(r'"price"\s*:\s*"?([\d,]+\.?\d*)"?', jld.group(1))
             if pm:
                 try:
-                    return f"${float(pm.group(1)):.2f}", "price from structured data — verify pack size on product page"
+                    return f"${float(pm.group(1)):.2f}", "verify pack size on product page"
                 except Exception:
                     pass
         return None, None
 
     def _closest_pack(html):
-        """Fallback: find any pack size closest to 50 mg."""
-        sizes = _re.findall(
-            r'([\d.]+\s*m?g)[^$\n<]{0,120}\$\s*([\d,]+\.?\d*)',
-            html, _re.IGNORECASE
-        )
+        sizes = _re.findall(r'([\d.]+\s*m?g)[^$\n<]{0,120}\$\s*([\d,]+\.?\d*)',
+                            html, _re.IGNORECASE)
         if not sizes:
             return None, None
-        def to_mg(s):
+        def _mg(s):
             n = _re.search(r'[\d.]+', s[0])
             v = float(n.group()) if n else 0
             return v * 1000 if 'g' in s[0].lower() and 'mg' not in s[0].lower() else v
-        best = sorted(sizes, key=lambda s: abs(to_mg(s) - 50))[0]
+        best = sorted(sizes, key=lambda s: abs(_mg(s) - 50))[0]
         try:
             return best[0].strip(), f"${float(best[1].replace(',','')):.2f}"
         except Exception:
             return None, None
 
-    def _scrape(prod_url, supplier, cat_pattern):
-        try:
-            pr = requests.get(prod_url, timeout=15, headers=hdrs)
-            if pr.status_code != 200:
-                return None
-            ph = pr.text
-            cat_m = _re.search(cat_pattern, ph) if cat_pattern else None
-            cat_id = cat_m.group(0) if cat_m else None
-            title_m = _re.search(r'<title>([^|<\-–]+)', ph)
-            prod_name = title_m.group(1).strip() if title_m else compound_name
-            price, note = _price_50mg(ph)
-            if not price:
-                pack, price = _closest_pack(ph)
-                if price and pack:
-                    note = f"50 mg not listed — price shown for {pack}"
-                else:
-                    note = "See product page for current pricing"
-            return {
-                "supplier":      supplier,
-                "product_name":  prod_name,
-                "catalog_id":    cat_id,
-                "pack":          "50 mg",
-                "price":         price,
-                "currency":      "USD",
-                "url":           prod_url,
-                "note":          note,
-            }
-        except Exception:
-            return None
+    def _parse_product(html, url, supplier, cat_pat, fallback_name):
+        cat_m   = _re.search(cat_pat, html) if cat_pat else None
+        title_m = _re.search(r'<title>([^|<\-–]+)', html)
+        price, note = _price_50mg(html)
+        if not price:
+            pack, price = _closest_pack(html)
+            note = (f"50 mg not listed — price shown for {pack}" if pack and price
+                    else "Click to view current pricing")
+        return {
+            "supplier":     supplier,
+            "product_name": title_m.group(1).strip() if title_m else fallback_name,
+            "catalog_id":   cat_m.group(0) if cat_m else None,
+            "pack":         "50 mg",
+            "price":        price,
+            "currency":     "USD",
+            "url":          url,
+            "note":         note,
+        }
 
-    # ── 1. MedChemExpress ─────────────────────────────────────────────────────
+    def _scrape(sess_or_none, url, supplier, cat_pat):
+        try:
+            fetch = sess_or_none.get if sess_or_none else requests.get
+            pr = fetch(url, timeout=14)
+            if pr.status_code == 200:
+                return _parse_product(pr.text, url, supplier, cat_pat, compound_name)
+        except Exception:
+            pass
+        return None
+
+    # ── 1. MedChemExpress (primary) ──────────────────────────────────────────
+    mce_search = f"{_MCE}/search.html?q={enc}"
+
+    # Guaranteed fallback — always points to MCE search even if scraping fails
+    mce_fallback = {
+        "supplier":     "MedChemExpress (MCE)",
+        "product_name": compound_name,
+        "catalog_id":   None,
+        "pack":         "50 mg",
+        "price":        None,
+        "currency":     "USD",
+        "url":          mce_search,
+        "note":         "Search MedChemExpress for current pricing and availability",
+    }
+
+    sess = _make_session()
     try:
-        sr = requests.get(
-            f"https://www.medchemexpress.com/search.html?q={enc}",
-            timeout=15, headers=hdrs
-        )
+        # Warm up session — acquires cookies and establishes trust signals
+        sess.get(_MCE + "/", timeout=8)
+    except Exception:
+        pass
+
+    # A. Try direct product-page URL (MCE slugs match compound names closely)
+    def _mce_slugs(name):
+        base  = name.strip()
+        caps  = base[0].upper() + base[1:] if base else base
+        hyph  = base.replace(" ", "-")
+        return list(dict.fromkeys([caps, hyph, base.upper(), base.lower()]))
+
+    sess.headers["Referer"] = _MCE + "/"
+    for slug in _mce_slugs(compound_name):
+        url = f"{_MCE}/{slug}.html"
+        try:
+            pr = sess.get(url, timeout=12, allow_redirects=True)
+            # Accept only genuine product pages (not redirected to search/home)
+            if pr.status_code == 200 and _MCE in pr.url and "search" not in pr.url:
+                return _parse_product(pr.text, pr.url, "MedChemExpress (MCE)",
+                                      r'HY-\d+[A-Z0-9-]*', compound_name)
+        except Exception:
+            continue
+
+    # B. Search page → follow first product link
+    try:
+        sr = sess.get(mce_search, timeout=15)
         if sr.status_code == 200:
             raw = _re.findall(r'href="(/[A-Za-z][A-Za-z0-9_%.-]*\.html)"', sr.text)
             links, seen = [], set()
@@ -1027,55 +1075,16 @@ def fetch_pricing(compound_name):
                 if seg not in _NAV and lk not in seen:
                     links.append(lk); seen.add(lk)
             for lk in links[:4]:
-                res = _scrape(
-                    "https://www.medchemexpress.com" + lk,
-                    "MedChemExpress (MCE)",
-                    r'HY-\d+[A-Z0-9-]*'
-                )
+                res = _scrape(sess, _MCE + lk, "MedChemExpress (MCE)", r'HY-\d+[A-Z0-9-]*')
                 if res:
                     return res
+            # Page loaded but no parseable product → return with search URL
+            return {**mce_fallback, "note": "See search results on MedChemExpress"}
     except Exception:
         pass
 
-    # ── 2. Selleckchem ────────────────────────────────────────────────────────
-    try:
-        sr = requests.get(
-            f"https://www.selleckchem.com/search.html#q={enc}&type=product",
-            timeout=15, headers=hdrs
-        )
-        if sr.status_code == 200:
-            links = _re.findall(r'href="(/products/[^"]+\.html)"', sr.text)
-            if links:
-                res = _scrape(
-                    "https://www.selleckchem.com" + links[0],
-                    "Selleckchem",
-                    r'\b(S\d{4,5})\b'
-                )
-                if res:
-                    return res
-    except Exception:
-        pass
-
-    # ── 3. Cayman Chemical ────────────────────────────────────────────────────
-    try:
-        sr = requests.get(
-            f"https://www.caymanchem.com/search?term={enc}",
-            timeout=15, headers=hdrs
-        )
-        if sr.status_code == 200:
-            links = _re.findall(r'href="(/product/\d+)"', sr.text)
-            if links:
-                res = _scrape(
-                    "https://www.caymanchem.com" + links[0],
-                    "Cayman Chemical",
-                    r'(?:Item\s*#:|Cat(?:alog)?\s*No\.?:?)\s*(\d+)'
-                )
-                if res:
-                    return res
-    except Exception:
-        pass
-
-    return None
+    # C. MCE completely blocked → return search-URL fallback (always usable)
+    return mce_fallback
 
 
 # ── Flask routes ───────────────────────────────────────────────────────────

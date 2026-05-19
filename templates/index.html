@@ -1338,7 +1338,9 @@ function renderPricing(p) {
       `<div class="price-amount">${escHtml(p.price)}</div>` +
       `<div class="price-pack">${escHtml(p.pack || '50 mg')} · ${escHtml(p.currency || 'USD')}</div>`;
   } else {
-    tag.innerHTML = `<div class="price-pack" style="font-size:.85rem;text-align:center">Price not<br>available online</div>`;
+    tag.innerHTML =
+      `<div style="font-size:1.5rem;line-height:1;color:var(--muted)">—</div>` +
+      `<div class="price-pack" style="margin-top:6px;text-align:center">Check website<br>for pricing</div>`;
   }
 
   // Meta block
