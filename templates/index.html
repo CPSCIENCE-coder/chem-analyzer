@@ -266,12 +266,19 @@
     .price-note { margin-top: 10px; font-size: .78rem; color: var(--warn);
                   padding: 6px 10px; background: rgba(196,125,0,.07);
                   border-left: 3px solid rgba(196,125,0,.4); border-radius: 4px; }
-    .price-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
-                  padding: 7px 16px; border-radius: 8px; text-decoration: none;
-                  font-size: .82rem; font-weight: 600; border: 1px solid;
-                  color: var(--accent); border-color: rgba(54,96,208,.35);
-                  background: rgba(54,96,208,.07); transition: opacity .2s; }
-    .price-link:hover { opacity: .75; }
+    .price-links  { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .price-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 18px; border-radius: 8px; text-decoration: none;
+      font-size: .82rem; font-weight: 600; border: 1px solid;
+      transition: opacity .2s, transform .15s;
+    }
+    .price-link:hover { opacity: .8; transform: translateY(-1px); }
+    .price-link-buy  { color: #fff; background: linear-gradient(135deg,#3d6fd4,#2a55c0);
+                       border-color: rgba(42,85,192,.5);
+                       box-shadow: 0 2px 8px rgba(54,96,208,.25); }
+    .price-link-home { color: var(--accent); background: rgba(54,96,208,.07);
+                       border-color: rgba(54,96,208,.30); }
     .price-unavail { color: var(--muted); font-size: .87rem; font-style: italic; }
 
     /* ── News ── */
@@ -1366,15 +1373,33 @@ function renderPricing(p) {
     meta.appendChild(note);
   }
 
+  const SUPPLIER_HOME = {
+    'MedChemExpress (MCE)': 'https://www.medchemexpress.com',
+    'Selleckchem':          'https://www.selleckchem.com',
+    'Cayman Chemical':      'https://www.caymanchem.com',
+  };
+  const links = document.createElement('div');
+  links.className = 'price-links';
   if (p.url) {
-    const a = document.createElement('a');
-    a.className = 'price-link';
-    a.href = escHtml(p.url);
-    a.target = '_blank';
-    a.rel = 'noopener';
-    a.textContent = `View on ${p.supplier || 'supplier'} ↗`;
-    meta.appendChild(a);
+    const buy = document.createElement('a');
+    buy.className = 'price-link price-link-buy';
+    buy.href = escHtml(p.url);
+    buy.target = '_blank';
+    buy.rel = 'noopener';
+    buy.textContent = 'Buy / Order product ↗';
+    links.appendChild(buy);
   }
+  const homeUrl = SUPPLIER_HOME[p.supplier];
+  if (homeUrl) {
+    const home = document.createElement('a');
+    home.className = 'price-link price-link-home';
+    home.href = homeUrl;
+    home.target = '_blank';
+    home.rel = 'noopener';
+    home.textContent = `Visit ${escHtml(p.supplier)} ↗`;
+    links.appendChild(home);
+  }
+  if (links.children.length) meta.appendChild(links);
 
   row.appendChild(tag);
   row.appendChild(meta);
