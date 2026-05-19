@@ -142,13 +142,14 @@
       content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
       border-radius: 10px 10px 0 0;
     }
-    .m-logd::before { background: var(--accent); }
-    .m-pka::before  { background: var(--green); }
-    .m-mw::before   { background: var(--warn); }
+    .m-logd::before  { background: var(--accent); }
+    .m-pka::before   { background: var(--green); }
+    .m-apka::before  { background: var(--error); }
+    .m-mw::before    { background: var(--warn); }
     .metric-val { font-size: 1.9rem; font-weight: 700; line-height: 1; }
     .metric-lbl { font-size: .74rem; color: var(--muted); margin-top: 5px; font-weight: 500; }
     .metric-sub { font-size: .70rem; color: var(--muted); margin-top: 3px; }
-    .c-logp { color: var(--accent); } .c-pka { color: var(--green); } .c-mw { color: var(--warn); }
+    .c-logp { color: var(--accent); } .c-pka { color: var(--green); } .c-apka { color: var(--error); } .c-mw { color: var(--warn); }
     .lipinski { margin-top: 14px; padding: 10px 14px; border-radius: 8px; font-size: .84rem; font-weight: 600; }
     .lip-pass { background: rgba(62,207,142,.1); border: 1px solid rgba(62,207,142,.3); color: var(--green); }
     .lip-fail { background: rgba(240,180,41,.1); border: 1px solid rgba(240,180,41,.3); color: var(--warn); }
@@ -417,6 +418,11 @@
             <div class="metric-val c-pka"  id="v-pka">—</div>
             <div class="metric-lbl">Base pKa</div>
             <div class="metric-sub" id="v-pka-grp">predicted</div>
+          </div>
+          <div class="metric m-apka">
+            <div class="metric-val c-apka" id="v-apka">—</div>
+            <div class="metric-lbl">Acid pKa</div>
+            <div class="metric-sub" id="v-apka-grp">predicted</div>
           </div>
           <div class="metric m-mw">
             <div class="metric-val c-mw"   id="v-mw">—</div>
@@ -1023,6 +1029,15 @@ function render(d) {
   $('v-logp').textContent    = d.logp?.toFixed(2) ?? 'N/A';
   $('v-pka').textContent     = d.predicted_pka?.toFixed(1) ?? 'N/A';
   $('v-pka-grp').textContent = d.pka_functional_group || '(no basic group)';
+  // Acidic pKa — show the lowest (most acidic) predicted site
+  const acidicSorted = (d.acidic_groups || []).slice().sort((a, b) => a.pka - b.pka);
+  if (acidicSorted.length) {
+    $('v-apka').textContent     = acidicSorted[0].pka.toFixed(1);
+    $('v-apka-grp').textContent = acidicSorted[0].group;
+  } else {
+    $('v-apka').textContent     = 'N/A';
+    $('v-apka-grp').textContent = '(no acidic group)';
+  }
   $('v-mw').textContent      = d.molecular_weight?.toFixed(1) ?? 'N/A';
 
   const lip = checkLipinski(d);
