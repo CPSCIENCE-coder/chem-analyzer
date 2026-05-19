@@ -123,16 +123,21 @@ def predict_acidic_pka(mol):
 # ── Name → SMILES resolver ────────────────────────────────────────────────
 
 def resolve_name_to_smiles(name):
-    """Resolve a common/IUPAC/scientific name to SMILES.
-    Tries three routes in order: PubChem direct, PubChem via CID, ChEMBL."""
+    """Resolve a common/IUPAC/drug-code name to SMILES.
+    Tries six routes; drug codes (ABT-737, GW-572016, …) are covered by
+    ChEMBL synonym search which catches names not stored as pref_name."""
+    _hdrs = {"User-Agent": "ChemPredict/1.0"}
     encoded = urllib.parse.quote(name)
 
-    # 1 — PubChem: name → IsomericSMILES in one call
+    def _smi_from_chembl_mol(mol):
+        return (mol.get("molecule_structures") or {}).get("canonical_smiles")
+
+    # 1 — PubChem: name → IsomericSMILES
     try:
         r = requests.get(
             f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{encoded}"
             f"/property/IsomericSMILES/JSON",
-            timeout=20, headers={"User-Agent": "ChemPredict/1.0"})
+            timeout=20, headers=_hdrs)
         if r.status_code == 200:
             props = r.json().get("PropertyTable", {}).get("Properties", [])
             if props:
@@ -142,18 +147,18 @@ def resolve_name_to_smiles(name):
     except Exception:
         pass
 
-    # 2 — PubChem: name → CID → CanonicalSMILES (different endpoint, avoids cached failures)
+    # 2 — PubChem: name → CID → CanonicalSMILES (different endpoint)
     try:
         r = requests.get(
             f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{encoded}/cids/JSON",
-            timeout=20, headers={"User-Agent": "ChemPredict/1.0"})
+            timeout=20, headers=_hdrs)
         if r.status_code == 200:
             cids = r.json().get("IdentifierList", {}).get("CID", [])
             if cids:
                 r2 = requests.get(
                     f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cids[0]}"
                     f"/property/CanonicalSMILES/JSON",
-                    timeout=20, headers={"User-Agent": "ChemPredict/1.0"})
+                    timeout=20, headers=_hdrs)
                 if r2.status_code == 200:
                     props = r2.json().get("PropertyTable", {}).get("Properties", [])
                     if props:
@@ -163,7 +168,7 @@ def resolve_name_to_smiles(name):
     except Exception:
         pass
 
-    # 3 — ChEMBL: preferred-name exact match (independent server, different IP routing)
+    # 3 — ChEMBL: pref_name exact match
     try:
         r = requests.get(
             f"https://www.ebi.ac.uk/chembl/api/data/molecule.json"
@@ -172,7 +177,61 @@ def resolve_name_to_smiles(name):
         if r.status_code == 200:
             mols = r.json().get("molecules", [])
             if mols:
-                smi = (mols[0].get("molecule_structures") or {}).get("canonical_smiles")
+                smi = _smi_from_chembl_mol(mols[0])
+                if smi:
+                    return smi
+    except Exception:
+        pass
+
+    # 4 — ChEMBL: synonym search — catches drug codes (ABT-737, GW-572016, …)
+    #     stored as synonyms rather than pref_name
+    try:
+        r = requests.get(
+            f"https://www.ebi.ac.uk/chembl/api/data/molecule.json"
+            f"?molecule_synonyms__synonyms__iexact={encoded}&limit=1",
+            timeout=20)
+        if r.status_code == 200:
+            mols = r.json().get("molecules", [])
+            if mols:
+                smi = _smi_from_chembl_mol(mols[0])
+                if smi:
+                    return smi
+    except Exception:
+        pass
+
+    # 5 — PubChem autocomplete → canonical name → SMILES
+    #     handles common abbreviations and trade names that autocomplete resolves
+    try:
+        r = requests.get(
+            f"https://pubchem.ncbi.nlm.nih.gov/rest/autocomplete/compound/{encoded}/JSON?limit=1",
+            timeout=20, headers=_hdrs)
+        if r.status_code == 200:
+            terms = r.json().get("dictionary_terms", {}).get("compound", [])
+            if terms and terms[0].lower() != name.lower():
+                enc2 = urllib.parse.quote(terms[0])
+                r2 = requests.get(
+                    f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{enc2}"
+                    f"/property/IsomericSMILES/JSON",
+                    timeout=20, headers=_hdrs)
+                if r2.status_code == 200:
+                    props = r2.json().get("PropertyTable", {}).get("Properties", [])
+                    if props:
+                        smi = props[0].get("IsomericSMILES")
+                        if smi:
+                            return smi
+    except Exception:
+        pass
+
+    # 6 — ChEMBL: pref_name contains (fuzzy; last resort for partial matches)
+    try:
+        r = requests.get(
+            f"https://www.ebi.ac.uk/chembl/api/data/molecule.json"
+            f"?pref_name__icontains={encoded}&limit=1",
+            timeout=20)
+        if r.status_code == 200:
+            mols = r.json().get("molecules", [])
+            if mols:
+                smi = _smi_from_chembl_mol(mols[0])
                 if smi:
                     return smi
     except Exception:
