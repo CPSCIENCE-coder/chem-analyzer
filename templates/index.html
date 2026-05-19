@@ -1377,6 +1377,7 @@ function renderPricing(p) {
 
   const SUPPLIER_HOME = {
     'MedChemExpress (MCE)': 'https://www.medchemexpress.com',
+    'AbMole BioScience':    'https://www.abmole.com',
     'Selleckchem':          'https://www.selleckchem.com',
     'Cayman Chemical':      'https://www.caymanchem.com',
   };
@@ -1385,7 +1386,7 @@ function renderPricing(p) {
   if (p.url) {
     const buy = document.createElement('a');
     buy.className = 'price-link price-link-buy';
-    buy.href = escHtml(p.url);
+    buy.href = p.url;
     buy.target = '_blank';
     buy.rel = 'noopener';
     buy.textContent = 'Buy / Order product ↗';
@@ -1400,6 +1401,16 @@ function renderPricing(p) {
     home.rel = 'noopener';
     home.textContent = `Visit ${escHtml(p.supplier)} ↗`;
     links.appendChild(home);
+  }
+  // If price came from AbMole, also show an MCE search button
+  if (p.supplier === 'AbMole BioScience' && p.mce_search) {
+    const mce = document.createElement('a');
+    mce.className = 'price-link price-link-home';
+    mce.href = p.mce_search;
+    mce.target = '_blank';
+    mce.rel = 'noopener';
+    mce.textContent = 'Search MedChemExpress ↗';
+    links.appendChild(mce);
   }
   if (links.children.length) meta.appendChild(links);
 
