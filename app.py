@@ -126,7 +126,7 @@ def resolve_name_to_smiles(name):
     """Resolve a common/IUPAC/drug-code name to SMILES.
     Tries six routes; drug codes (ABT-737, GW-572016, …) are covered by
     ChEMBL synonym search which catches names not stored as pref_name."""
-    _hdrs = {"User-Agent": "ChemPredict/1.0"}
+    _hdrs = {"User-Agent": "LipoPredict/1.0"}
     encoded = urllib.parse.quote(name)
 
     def _smi_from_chembl_mol(mol):
