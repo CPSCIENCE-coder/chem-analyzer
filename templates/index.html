@@ -247,6 +247,33 @@
     .ref-link { display: inline-flex; align-items: center; margin-left: 6px; color: var(--accent); font-size: .72rem; text-decoration: none; opacity: .75; vertical-align: middle; }
     .ref-link:hover { opacity: 1; }
 
+    /* ── Pricing ── */
+    .price-row { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+    .price-tag {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-width: 130px; padding: 18px 20px; border-radius: 12px;
+      background: linear-gradient(135deg, rgba(54,96,208,.10) 0%, rgba(14,110,130,.10) 100%);
+      border: 1px solid rgba(54,96,208,.22); flex-shrink: 0;
+    }
+    .price-amount { font-size: 2rem; font-weight: 700; color: var(--accent); line-height: 1; }
+    .price-pack   { font-size: .78rem; color: var(--muted); margin-top: 4px; font-weight: 500; }
+    .price-meta   { flex: 1; min-width: 180px; }
+    .price-supplier { font-size: 1.0rem; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .price-details  { display: flex; flex-direction: column; gap: 4px; }
+    .price-row-item { display: flex; gap: 8px; font-size: .84rem; }
+    .price-lbl  { color: var(--muted); min-width: 90px; flex-shrink: 0; }
+    .price-val  { color: var(--text); font-weight: 500; word-break: break-all; }
+    .price-note { margin-top: 10px; font-size: .78rem; color: var(--warn);
+                  padding: 6px 10px; background: rgba(196,125,0,.07);
+                  border-left: 3px solid rgba(196,125,0,.4); border-radius: 4px; }
+    .price-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
+                  padding: 7px 16px; border-radius: 8px; text-decoration: none;
+                  font-size: .82rem; font-weight: 600; border: 1px solid;
+                  color: var(--accent); border-color: rgba(54,96,208,.35);
+                  background: rgba(54,96,208,.07); transition: opacity .2s; }
+    .price-link:hover { opacity: .75; }
+    .price-unavail { color: var(--muted); font-size: .87rem; font-style: italic; }
+
     /* ── News ── */
     .news-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
     .news-item { padding: 14px 16px; background: var(--card); border-radius: 10px; border-left: 3px solid var(--accent); transition: box-shadow .18s, transform .18s; }
@@ -506,6 +533,12 @@
             <ul class="lipo-list lipo-concerns" id="lipo-concerns"></ul>
           </div>
         </div>
+      </div>
+
+      <!-- Compound Pricing -->
+      <div class="card full" id="price-card" style="display:none">
+        <div class="card-title">Compound Pricing</div>
+        <div id="price-inner"></div>
       </div>
 
       <!-- Recent News — PubMed -->
@@ -1032,6 +1065,9 @@ function render(d) {
   // Liposomal suitability
   renderLiposomal(d.liposomal);
 
+  // Pricing
+  renderPricing(d.pricing);
+
   // News + Trials
   renderNews(d.news, (d.chembl || {}).pubmed_url);
   renderTrials(d.trials, (d.chembl || {}).trials_url);
@@ -1274,6 +1310,75 @@ function renderLiposomal(lipo) {
     conSec.style.display = 'block';
     conUl.innerHTML = lipo.concerns.map(t => `<li>${escHtml(t)}</li>`).join('');
   } else { conSec.style.display = 'none'; }
+}
+
+function renderPricing(p) {
+  const card = $('price-card');
+  if (!p) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  const inner = $('price-inner');
+  inner.innerHTML = '';
+
+  const row = document.createElement('div');
+  row.className = 'price-row';
+
+  // Price tag block
+  const tag = document.createElement('div');
+  tag.className = 'price-tag';
+  if (p.price) {
+    tag.innerHTML =
+      `<div class="price-amount">${escHtml(p.price)}</div>` +
+      `<div class="price-pack">${escHtml(p.pack || '50 mg')} · ${escHtml(p.currency || 'USD')}</div>`;
+  } else {
+    tag.innerHTML = `<div class="price-pack" style="font-size:.85rem;text-align:center">Price not<br>available online</div>`;
+  }
+
+  // Meta block
+  const meta = document.createElement('div');
+  meta.className = 'price-meta';
+
+  const sup = document.createElement('div');
+  sup.className = 'price-supplier';
+  sup.textContent = p.supplier || 'Supplier';
+  meta.appendChild(sup);
+
+  const details = document.createElement('div');
+  details.className = 'price-details';
+  const rows = [
+    ['Product',    p.product_name],
+    ['Catalog #',  p.catalog_id],
+    ['Pack size',  p.pack],
+  ];
+  rows.forEach(([lbl, val]) => {
+    if (!val) return;
+    const d = document.createElement('div');
+    d.className = 'price-row-item';
+    d.innerHTML = `<span class="price-lbl">${escHtml(lbl)}</span><span class="price-val">${escHtml(val)}</span>`;
+    details.appendChild(d);
+  });
+  meta.appendChild(details);
+
+  if (p.note) {
+    const note = document.createElement('div');
+    note.className = 'price-note';
+    note.textContent = p.note;
+    meta.appendChild(note);
+  }
+
+  if (p.url) {
+    const a = document.createElement('a');
+    a.className = 'price-link';
+    a.href = escHtml(p.url);
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = `View on ${p.supplier || 'supplier'} ↗`;
+    meta.appendChild(a);
+  }
+
+  row.appendChild(tag);
+  row.appendChild(meta);
+  inner.appendChild(row);
 }
 
 function renderNews(articles, pubmedUrl) {

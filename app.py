@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify
+import re as _re
 from rdkit import Chem
 from rdkit.Chem import Draw, AllChem
 from rdkit.Chem.Crippen import MolLogP
@@ -851,6 +852,173 @@ def evaluate_liposomal_suitability(logd, pred_pka, all_basic, acidic_groups, mw,
     }
 
 
+# ── Compound pricing ──────────────────────────────────────────────────────────
+# Try MedChemExpress first (ZoneOne / MCE catalog), then Selleckchem, then
+# Cayman Chemical.  Returns pricing for 50 mg or the closest available pack.
+
+def fetch_pricing(compound_name):
+    if not compound_name:
+        return None
+
+    _ua = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+    )
+    hdrs = {
+        "User-Agent": _ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    enc = urllib.parse.quote(compound_name, safe="")
+
+    _NAV = {
+        "search", "about", "faq", "blog", "shipping", "service", "login",
+        "cart", "account", "contact", "static", "index", "category",
+        "custom", "news", "sitemap", "privacy", "terms", "support",
+        "promotions", "resources", "collection", "antibody", "assay",
+    }
+
+    def _price_50mg(html):
+        """Return (price_str, note) for a 50 mg pack from raw HTML."""
+        for pat in [
+            r'50\s*mg[^$\n<]{0,200}\$\s*([\d,]+\.?\d*)',
+            r'\$\s*([\d,]+\.?\d*)[^$\n<]{0,120}50\s*mg',
+            r'"50\s*mg"[^$\n]{0,300}\$\s*([\d,]+\.?\d*)',
+            r'50\s*mg.*?(?:USD|price)["\s:]+\$?\s*([\d,]+\.?\d*)',
+        ]:
+            m = _re.search(pat, html, _re.IGNORECASE | _re.DOTALL)
+            if m:
+                try:
+                    return f"${float(m.group(1).replace(',','')):.2f}", None
+                except ValueError:
+                    continue
+        # JSON-LD structured data fallback
+        jld = _re.search(
+            r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>',
+            html, _re.DOTALL | _re.IGNORECASE
+        )
+        if jld:
+            pm = _re.search(r'"price"\s*:\s*"?([\d,]+\.?\d*)"?', jld.group(1))
+            if pm:
+                try:
+                    return f"${float(pm.group(1)):.2f}", "price from structured data — verify pack size on product page"
+                except Exception:
+                    pass
+        return None, None
+
+    def _closest_pack(html):
+        """Fallback: find any pack size closest to 50 mg."""
+        sizes = _re.findall(
+            r'([\d.]+\s*m?g)[^$\n<]{0,120}\$\s*([\d,]+\.?\d*)',
+            html, _re.IGNORECASE
+        )
+        if not sizes:
+            return None, None
+        def to_mg(s):
+            n = _re.search(r'[\d.]+', s[0])
+            v = float(n.group()) if n else 0
+            return v * 1000 if 'g' in s[0].lower() and 'mg' not in s[0].lower() else v
+        best = sorted(sizes, key=lambda s: abs(to_mg(s) - 50))[0]
+        try:
+            return best[0].strip(), f"${float(best[1].replace(',','')):.2f}"
+        except Exception:
+            return None, None
+
+    def _scrape(prod_url, supplier, cat_pattern):
+        try:
+            pr = requests.get(prod_url, timeout=15, headers=hdrs)
+            if pr.status_code != 200:
+                return None
+            ph = pr.text
+            cat_m = _re.search(cat_pattern, ph) if cat_pattern else None
+            cat_id = cat_m.group(0) if cat_m else None
+            title_m = _re.search(r'<title>([^|<\-–]+)', ph)
+            prod_name = title_m.group(1).strip() if title_m else compound_name
+            price, note = _price_50mg(ph)
+            if not price:
+                pack, price = _closest_pack(ph)
+                if price and pack:
+                    note = f"50 mg not listed — price shown for {pack}"
+                else:
+                    note = "See product page for current pricing"
+            return {
+                "supplier":      supplier,
+                "product_name":  prod_name,
+                "catalog_id":    cat_id,
+                "pack":          "50 mg",
+                "price":         price,
+                "currency":      "USD",
+                "url":           prod_url,
+                "note":          note,
+            }
+        except Exception:
+            return None
+
+    # ── 1. MedChemExpress ─────────────────────────────────────────────────────
+    try:
+        sr = requests.get(
+            f"https://www.medchemexpress.com/search.html?q={enc}",
+            timeout=15, headers=hdrs
+        )
+        if sr.status_code == 200:
+            raw = _re.findall(r'href="(/[A-Za-z][A-Za-z0-9_%.-]*\.html)"', sr.text)
+            links, seen = [], set()
+            for lk in raw:
+                seg = lk.lower().lstrip('/').split('/')[0].split('.')[0]
+                if seg not in _NAV and lk not in seen:
+                    links.append(lk); seen.add(lk)
+            for lk in links[:4]:
+                res = _scrape(
+                    "https://www.medchemexpress.com" + lk,
+                    "MedChemExpress (MCE)",
+                    r'HY-\d+[A-Z0-9-]*'
+                )
+                if res:
+                    return res
+    except Exception:
+        pass
+
+    # ── 2. Selleckchem ────────────────────────────────────────────────────────
+    try:
+        sr = requests.get(
+            f"https://www.selleckchem.com/search.html#q={enc}&type=product",
+            timeout=15, headers=hdrs
+        )
+        if sr.status_code == 200:
+            links = _re.findall(r'href="(/products/[^"]+\.html)"', sr.text)
+            if links:
+                res = _scrape(
+                    "https://www.selleckchem.com" + links[0],
+                    "Selleckchem",
+                    r'\b(S\d{4,5})\b'
+                )
+                if res:
+                    return res
+    except Exception:
+        pass
+
+    # ── 3. Cayman Chemical ────────────────────────────────────────────────────
+    try:
+        sr = requests.get(
+            f"https://www.caymanchem.com/search?term={enc}",
+            timeout=15, headers=hdrs
+        )
+        if sr.status_code == 200:
+            links = _re.findall(r'href="(/product/\d+)"', sr.text)
+            if links:
+                res = _scrape(
+                    "https://www.caymanchem.com" + links[0],
+                    "Cayman Chemical",
+                    r'(?:Item\s*#:|Cat(?:alog)?\s*No\.?:?)\s*(\d+)'
+                )
+                if res:
+                    return res
+    except Exception:
+        pass
+
+    return None
+
+
 # ── Flask routes ───────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -916,13 +1084,15 @@ def analyze():
 
     liposomal = evaluate_liposomal_suitability(logd_74, pred_pka, all_basic, acidic_groups, mw, tpsa, hbd, chembl)
 
-    # PubMed news + ClinicalTrials in parallel (use compound name if found)
+    # PubMed news + ClinicalTrials + pricing in parallel
     compound_name = (chembl or {}).get("name") or (pubchem or {}).get("iupac_name") or ""
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        f_news   = ex.submit(get_pubmed_news,     compound_name)
-        f_trials = ex.submit(get_clinical_trials, compound_name)
-        news   = f_news.result()
-        trials = f_trials.result()
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_news    = ex.submit(get_pubmed_news,     compound_name)
+        f_trials  = ex.submit(get_clinical_trials, compound_name)
+        f_pricing = ex.submit(fetch_pricing,       compound_name)
+        news    = f_news.result()
+        trials  = f_trials.result()
+        pricing = f_pricing.result()
 
     return jsonify({
         "smiles":               canonical,
@@ -941,6 +1111,7 @@ def analyze():
         "pubchem":              pubchem,
         "chembl":               chembl,
         "liposomal":            liposomal,
+        "pricing":              pricing,
         "news":                 news,
         "trials":               trials,
     })
